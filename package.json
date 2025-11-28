@@ -1,0 +1,29 @@
+{
+  "name": "nestjs-accountant",
+  "version": "0.0.1",
+  "description": "The easiest, most reliable and compliant way of managing financial transactions in your backend (NestJs) app with good auditing and reporting capabilities.",
+  "main": "/dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "Finance",
+    "Account",
+    "Credit",
+    "Debit",
+    "Wallet",
+    "Money",
+    "Compliant",
+    "Report",
+    "Sales"
+  ],
+  "author": "Engr., Isaiah Pius",
+  "license": "ISC",
+  "devDependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@types/node": "^24.10.1",
+    "nestjs": "^0.0.1",
+    "typeorm": "^0.3.27"
+  }
+}

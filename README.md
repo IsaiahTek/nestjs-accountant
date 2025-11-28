@@ -1,1 +1,1 @@
-# nestjs-accountant
+# Nestjs Accountant

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020", 
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    // *** Essential for Decorators (The Fix) ***
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // ******************************************
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node"
+  },
+  "include": ["src/**/*"]
+}
