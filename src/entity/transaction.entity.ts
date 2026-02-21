@@ -1,42 +1,69 @@
 // src/ledger/entities/transaction.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum TransactionStatus {
   PENDING = 'PENDING',
-  SUCCESS = 'SUCCESS',
+  POSTED = 'POSTED',
+  REVERSED = 'REVERSED',
   FAILED = 'FAILED',
 }
 
-export enum TransactionType {
-  P2P_TRANSFER = 'P2P_TRANSFER',
-  DEPOSIT = 'DEPOSIT',
-  WITHDRAWAL = 'WITHDRAWAL',
-  REVERSAL = 'REVERSAL',
-  ESCROW_DEPOSIT = 'ESCROW_DEPOSIT',
-  ESCROW_RELEASE = 'ESCROW_RELEASE',
-}
+// export enum TransactionType {
+//   PAYMENT_CAPTURE = 'PAYMENT_CAPTURE',
+//   ESCROW_LOCK = 'ESCROW_LOCK',
+//   ESCROW_RELEASE = 'ESCROW_RELEASE',
+//   VENDOR_PAYOUT = 'VENDOR_PAYOUT',
+//   REFUND = 'REFUND',
+//   DISPUTE = 'DISPUTE',
+//   FX_CONVERSION = 'FX_CONVERSION',
+//   REVERSAL = 'REVERSAL',
+// }
 
 @Entity('transactions')
+@Index(['tenantId', 'idempotencyKey'], { unique: true })
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
-  amount: number; // Total amount involved
+  @Column({ type: 'uuid' })
+  tenantId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  ownerId: string | null;
+
+  // 🔥 Total amount in minor units (for main currency of txn)
+  @Column({ type: 'bigint' })
+  amountMinor: string;
+
+  @Column({ length: 3 })
+  currency: string;
 
   @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.PENDING })
   status: TransactionStatus;
 
-  @Column({ type: 'enum', enum: TransactionType })
-  type: TransactionType;
+  @Column({ type: 'string', nullable: true })
+  type?: string;
 
   @Column({ nullable: true })
   gatewayRefId: string;
 
-  // 💥 NEW COLUMN: To store the main account affected by the transaction 💥
-  @Column({ type: 'uuid' })
-  mainAccountId: string;
-  
+  // 🔥 Idempotency for webhook retries
+  @Column()
+  idempotencyKey: string;
+
+  // 🔥 Optional FX support
+  @Column({ nullable: true })
+  fxRate: string;
+
+  @Column({ length: 3, nullable: true })
+  sourceCurrency: string;
+
+  @Column({ length: 3, nullable: true })
+  targetCurrency: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata: Record<string, any>;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

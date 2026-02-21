@@ -15,7 +15,7 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { LedgerService } from '../services/ledger.service';
 import { EntryDto } from '../dto/entry.dto';
 import { Direction } from '../entity/entry.entity';
-import { Transaction, TransactionStatus, TransactionType } from '../entity/transaction.entity';
+import { Transaction, TransactionStatus } from '../entity/transaction.entity';
 
 @Injectable()
 export class WebhookService {
@@ -47,30 +47,42 @@ export class WebhookService {
     // 2. Determine Amounts (The key step!)
     // The amount MUST be derived from the ORIGINAL business intent (the pending transaction)
     // NOT from the webhook payload, as the PG might use a different currency/format.
-    const grossAmount = pendingTransaction.amount;
-    const userAccountId = pendingTransaction.mainAccountId; // Stored when pending transaction was created
+    const grossAmount = pendingTransaction.amountMinor;
+    const userAccountId = pendingTransaction.ownerId; // Stored when pending transaction was created
 
     // Re-calculate the exact fee split used by the business logic
-    const serviceFee = grossAmount * this.DEPOSIT_FEE_RATE;
-    const vatAmount = serviceFee * this.DEPOSIT_VAT_RATE;
-    const netDeposit = grossAmount - serviceFee - vatAmount;
+    const serviceFee = Number(grossAmount) * this.DEPOSIT_FEE_RATE as unknown as string;
+    const vatAmount = (serviceFee as unknown as number) * this.DEPOSIT_VAT_RATE as unknown as string;
+    const netDeposit = Number(grossAmount) - (serviceFee as unknown as number) - (vatAmount as unknown as number) as unknown as string;
 
     // 3. Create the Final Ledger Entries
     const entries: EntryDto[] = [
       // DEBIT: External Cash (Money came into the system's control)
-      { accountId: this.EXTERNAL_CASH_ACCOUNT_ID, direction: Direction.DEBIT, amount: grossAmount, description: 'Deposit Gross Amount Received (Webhook)' },
+      {
+        accountId: this.EXTERNAL_CASH_ACCOUNT_ID, direction: Direction.DEBIT, amountMinor: grossAmount, description: 'Deposit Gross Amount Received (Webhook)',
+        currency: ''
+      },
       // CREDIT: User Wallet (Net amount added to user)
-      { accountId: userAccountId, direction: Direction.CREDIT, amount: netDeposit, description: 'Net Deposit to Wallet (Webhook)' },
+      {
+        accountId: userAccountId, direction: Direction.CREDIT, amountMinor: netDeposit, description: 'Net Deposit to Wallet (Webhook)',
+        currency: ''
+      },
       // CREDIT: Platform Revenue (The service fee earned)
-      { accountId: this.PLATFORM_REVENUE_ACCOUNT_ID, direction: Direction.CREDIT, amount: serviceFee, description: 'Platform Deposit Fee (Webhook)' },
+      {
+        accountId: this.PLATFORM_REVENUE_ACCOUNT_ID, direction: Direction.CREDIT, amountMinor: serviceFee, description: 'Platform Deposit Fee (Webhook)',
+        currency: ''
+      },
       // CREDIT: Tax Liability (The tax collected on the fee)
-      { accountId: this.TAX_LIABILITY_ACCOUNT_ID, direction: Direction.CREDIT, amount: vatAmount, description: 'VAT on Deposit Fee (Webhook)' },
+      {
+        accountId: this.TAX_LIABILITY_ACCOUNT_ID, direction: Direction.CREDIT, amountMinor: vatAmount, description: 'VAT on Deposit Fee (Webhook)',
+        currency: ''
+      },
     ];
 
     try {
         // 4. Atomically create entries and update status to SUCCESS
         const finalTransaction = await this.ledgerService.createTransaction({
-            type: TransactionType.DEPOSIT,
+            type: pendingTransaction.type,
             entriesData: entries,
             mainAccountId: userAccountId, // mainAccountId
             gatewayRefId: externalRefId // gatewayRefId
@@ -81,7 +93,7 @@ export class WebhookService {
         // A common pattern is to just update the PENDING transaction's status to SUCCESS:
         await this.ledgerService.updateTransaction(
             pendingTransaction.id, 
-            { status: TransactionStatus.SUCCESS }
+            { status: TransactionStatus.POSTED }
         );
 
         return finalTransaction;

@@ -1,30 +1,42 @@
 // src/ledger/entities/account.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum AccountType {
-  USER_WALLET = 'USER_WALLET',
+  CUSTOMER_WALLET = 'CUSTOMER_WALLET',
+
+  VENDOR_ESCROW = 'VENDOR_ESCROW',
+  VENDOR_AVAILABLE = 'VENDOR_AVAILABLE',
+
+  PLATFORM_CUSTODY = 'PLATFORM_CUSTODY',
   PLATFORM_REVENUE = 'PLATFORM_REVENUE',
   PLATFORM_FEE = 'PLATFORM_FEE',
-  TAX_LIABILITY = 'TAX_LIABILITY', // New for VAT/Tax owed to government
-  EXTERNAL_CASH = 'EXTERNAL_CASH',
+  TAX_LIABILITY = 'TAX_LIABILITY',
+  REFUND_PAYABLE = 'REFUND_PAYABLE',
+  RISK_RESERVE = 'RISK_RESERVE',
+
+  EXTERNAL_CLEARING = 'EXTERNAL_CLEARING',
 }
 
 @Entity('accounts')
+@Index(['tenantId', 'ownerId', 'accountType'])
 export class Account {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // 🔥 Multi-tenant SaaS isolation
   @Column({ type: 'uuid', nullable: true })
-  userId: string | null;
+  tenantId?: string;
+
+  // Can represent userId, vendorId, or null for platform accounts
+  @Column({ type: 'uuid', nullable: true })
+  ownerId: string | null;
 
   @Column({ type: 'enum', enum: AccountType })
   accountType: AccountType;
 
-  @Column({ length: 3 })
-  currency: string; 
+  @Column({ default: false })
+  isFrozen: boolean; // For disputes / compliance freezes
 
-  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
-  currentBalance: number; // The cached balance
-
-  // Omitting @OneToMany for brevity in this example
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 }

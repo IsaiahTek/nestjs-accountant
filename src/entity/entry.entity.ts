@@ -1,5 +1,5 @@
 // src/ledger/entities/entry.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum Direction {
   DEBIT = 'DEBIT',
@@ -7,9 +7,14 @@ export enum Direction {
 }
 
 @Entity('entries')
+@Index(['transactionId'])
+@Index(['accountId'])
 export class Entry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'uuid' })
+  tenantId: string;
 
   @Column({ type: 'uuid' })
   transactionId: string;
@@ -20,8 +25,12 @@ export class Entry {
   @Column({ type: 'enum', enum: Direction })
   direction: Direction;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
-  amount: number;
+  // 🔥 Minor units
+  @Column({ type: 'bigint' })
+  amountMinor: string;
+
+  @Column({ length: 3 })
+  currency: string;
 
   @Column()
   description: string;

@@ -4,6 +4,8 @@ import { Direction } from '../entity/entry.entity';
 export class EntryDto {
   accountId: string;
   direction: Direction;
-  amount: number;
   description: string;
+  tenantId?: string;
+  amountMinor: string;
+  currency: string;
 }

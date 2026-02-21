@@ -4,290 +4,423 @@ import { Injectable, BadRequestException, InternalServerErrorException } from '@
 import { LedgerService } from '../services/ledger.service';
 import { EntryDto } from '../dto/entry.dto';
 import { Direction } from '../entity/entry.entity';
-import { Transaction, TransactionType, TransactionStatus } from '../entity/transaction.entity';
+import { Transaction, TransactionStatus } from '../entity/transaction.entity';
 import { PaymentCallback } from '../common/types/gateway.payment.types';
 
 @Injectable()
 export class WalletService {
-  // Hardcoded System Account IDs (These must exist in your database)
-  private PLATFORM_REVENUE_ACCOUNT_ID = 'uuid-revenue-acc';
-  private TAX_LIABILITY_ACCOUNT_ID = 'uuid-tax-liability-acc';
-  private EXTERNAL_CASH_ACCOUNT_ID = 'uuid-external-cash-acc';
-  private ESCROW_HOLDING_ACCOUNT_ID = 'uuid-escrow-acc';
 
-  constructor(
-    private ledgerService: LedgerService,
-  ) { }
+    constructor(
+        private ledgerService: LedgerService,
+    ) { }
 
-  // --- 1. INTERNAL: P2P Transfer (Atomic and Synchronous) ---
+    // --------------------------------------
+    // Configurable System Accounts
+    // --------------------------------------
 
-  async sendP2PWithFeeAndVAT(
-    senderAccountId: string,
-    recipientAccountId: string,
-    principalAmount: number,
-    feeRate: number, // Generic input
-    vatRate: number // Generic input
-  ): Promise<Transaction> {
+    private PLATFORM_REVENUE_ACCOUNT_ID = 'uuid-revenue-acc';
+    private TAX_LIABILITY_ACCOUNT_ID = 'uuid-tax-liability-acc';
+    private EXTERNAL_CASH_ACCOUNT_ID = 'uuid-external-cash-acc';
+    private ESCROW_HOLDING_ACCOUNT_ID = 'uuid-escrow-acc';
 
-    const serviceFee = principalAmount * feeRate;
-    const vatAmount = serviceFee * vatRate;
-    const totalDeduction = principalAmount + serviceFee + vatAmount;
+    // --------------------------------------
+    // Utility Conversion
+    // --------------------------------------
 
-    // 1. Balance Check
-    const currentBalance = await this.ledgerService.getAccountBalance(senderAccountId);
-    if (currentBalance < totalDeduction) {
-      throw new BadRequestException('Insufficient wallet balance to cover transfer and fees.');
+    private toMinor(amount: number): bigint {
+        return BigInt(Math.round(amount * 100));
     }
 
-    // 2. Construct the Entry DTOs: 3 DEBITS and 3 CREDITS
-    const entries: EntryDto[] = [
-      // DEBITS (Sender)
-      { accountId: senderAccountId, direction: Direction.DEBIT, amount: principalAmount, description: 'P2P Principal Transfer' },
-      { accountId: senderAccountId, direction: Direction.DEBIT, amount: serviceFee, description: 'Service Fee (Net)' },
-      { accountId: senderAccountId, direction: Direction.DEBIT, amount: vatAmount, description: 'Service Fee VAT Collected' },
+    // --------------------------------------
+    // P2P Transfer
+    // --------------------------------------
 
-      // CREDITS (Recipient, Revenue, Tax)
-      { accountId: recipientAccountId, direction: Direction.CREDIT, amount: principalAmount, description: 'P2P Principal Received' },
-      { accountId: this.PLATFORM_REVENUE_ACCOUNT_ID, direction: Direction.CREDIT, amount: serviceFee, description: 'Platform Net Revenue' },
-      { accountId: this.TAX_LIABILITY_ACCOUNT_ID, direction: Direction.CREDIT, amount: vatAmount, description: 'VAT Liability' },
-    ];
+    async sendP2PWithFeeAndVAT(
+        senderAccountId: string,
+        recipientAccountId: string,
+        principalAmount: number,
+        feeRate: number,
+        vatRate: number,
+        currency: string
+    ) {
 
-    // 3. Execute the atomic transaction
-    return this.ledgerService.createTransaction({
-      type: TransactionType.P2P_TRANSFER,
-      entriesData: entries,
-      mainAccountId: senderAccountId  
-    }
-    );
-  }
+        const principalMinor = this.toMinor(principalAmount);
 
-  // INTERNAL : Escrow
+        const feeMinor = this.toMinor(principalAmount * feeRate);
+        const vatMinor = BigInt(Math.round(Number(feeMinor) * vatRate));
 
-  async fundEscrow(buyerAccountId: string, amount: number, escrowRefId: string): Promise<Transaction> {
+        const totalDeduction = principalMinor + feeMinor + vatMinor;
 
-    // 1. Balance Check (ensuring buyer has funds)
-    const currentBalance = await this.ledgerService.getAccountBalance(buyerAccountId);
-    if (currentBalance < amount) {
-      throw new BadRequestException('Insufficient balance to fund escrow.');
-    }
+        const balance = BigInt(
+            await this.ledgerService.getAccountBalance(senderAccountId)
+        );
 
-    // 2. Define Entries: Lock the funds
-    const entries: EntryDto[] = [
-      // DEBIT: Buyer's Wallet (Funds leave the buyer's control)
-      { accountId: buyerAccountId, direction: Direction.DEBIT, amount: amount, description: `Escrow lock for reference ${escrowRefId}` },
-      // CREDIT: Escrow Holding Account (Funds are now managed by the system)
-      { accountId: this.ESCROW_HOLDING_ACCOUNT_ID, direction: Direction.CREDIT, amount: amount, description: `Funds received for ${escrowRefId}` },
-    ];
+        if (balance < totalDeduction) {
+            throw new BadRequestException('Insufficient balance');
+        }
 
-    // 3. Execute atomic transaction
-    return this.ledgerService.createTransaction({
-      type: TransactionType.ESCROW_DEPOSIT, // Requires new enum type
-      entriesData: entries,
-      mainAccountId: buyerAccountId // mainAccountId: the initiator
-    });
-  }
+        const entries: EntryDto[] = [
+            {
+                accountId: senderAccountId,
+                direction: Direction.DEBIT,
+                amountMinor: principalMinor.toString(),
+                currency: currency,
+                description: 'Principal transfer'
+            },
+            {
+                accountId: senderAccountId,
+                direction: Direction.DEBIT,
+                amountMinor: feeMinor.toString(),
+                currency: currency,
+                description: 'Service fee'
+            },
+            {
+                accountId: senderAccountId,
+                direction: Direction.DEBIT,
+                amountMinor: vatMinor.toString(),
+                currency: currency,
+                description: 'VAT'
+            },
 
-  // WalletService (Conceptual)
+            {
+                accountId: recipientAccountId,
+                direction: Direction.CREDIT,
+                amountMinor: principalMinor.toString(),
+                currency: currency,
+                description: 'P2P receipt'
+            },
 
-  async releaseEscrow(sellerAccountId: string, amount: number, escrowRefId: string): Promise<Transaction> {
+            {
+                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: feeMinor.toString(),
+                currency: currency,
+                description: 'Revenue'
+            },
 
-    // 1. Define Entries: Release the funds
-    const entries: EntryDto[] = [
-      // DEBIT: Escrow Holding Account (Funds leave system control)
-      { accountId: this.ESCROW_HOLDING_ACCOUNT_ID, direction: Direction.DEBIT, amount: amount, description: `Escrow release for ${escrowRefId}` },
-      // CREDIT: Seller's Wallet (Funds are delivered)
-      { accountId: sellerAccountId, direction: Direction.CREDIT, amount: amount, description: `Payment received from escrow ${escrowRefId}` },
-    ];
+            {
+                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: vatMinor.toString(),
+                currency: currency,
+                description: 'VAT liability'
+            }
+        ];
 
-    // 2. Execute atomic transaction (fees can be included here or done in a separate call)
-    return this.ledgerService.createTransaction({
-      type: TransactionType.ESCROW_RELEASE, // Requires new enum type
-      entriesData: entries,
-      mainAccountId: sellerAccountId // mainAccountId: the recipient
-    });
-  }
-
-  // --- 2. EXTERNAL: Deposit (Asynchronous via Webhook) ---
-
-  async handleDeposit(payload: {
-    userAccountId: string,
-    grossAmount: number, // Renamed for clarity
-    paymentToken: string,
-    paymentCallback: PaymentCallback,
-    /**
-     * @depositFeeRate is the rate at which the deposit fee is calculated. Pass in 0 if no fee should be charged
-    */
-    depositFeeRate: number,
-    /**
-      * @depositVatRate is the rate at which the deposit VAT is calculated. Pass in 0 if no VAT should be charged
-      */
-    depositVatRate: number,
-  }): Promise<Transaction> {
-
-    const {
-      userAccountId,
-      grossAmount,
-      paymentToken,
-      paymentCallback,
-      depositFeeRate,
-      depositVatRate,
-    } = payload;
-
-    const serviceFee = grossAmount * depositFeeRate;
-    const vatAmount = serviceFee * depositVatRate;
-    const netDeposit = grossAmount - serviceFee - vatAmount;
-
-    // 1. Initiate: Create PENDING Transaction (using Gross Amount)
-    const pendingTransaction = await this.ledgerService.createPendingTransaction(
-      TransactionType.DEPOSIT,
-      grossAmount,
-      userAccountId
-    );
-
-    try {
-      // 2. External Call: Use generic callback
-      const gatewayRefId = await paymentCallback({
-        paymentMethodId: paymentToken,
-        amount: netDeposit,
-        transactionId: pendingTransaction.id,
-      });
-
-      // 3. Update Ref: Update PENDING transaction with the PG ID
-      await this.ledgerService.updateTransaction(
-        pendingTransaction.id,
-        { gatewayRefId: gatewayRefId }
-      );
-
-      return pendingTransaction;
-
-    } catch (error) {
-      // 4. Failure: Mark transaction as FAILED immediately
-      await this.ledgerService.updateTransaction(
-        pendingTransaction.id,
-        { status: TransactionStatus.FAILED }
-      );
-      throw new BadRequestException('Payment gateway charge failed.');
-    }
-  }
-
-  // --- 3. EXTERNAL: Withdrawal (Atomic Debit followed by Async Payout) ---
-
-  async handleWithdrawal(payload: {
-    userAccountId: string,
-    netAmount: number, // Net amount the user requested
-    bankAccountId: string,
-    paymentCallback: PaymentCallback,
-    withdrawalFeeAmount: number,
-    withdrawalVatAmount: number
-  }): Promise<Transaction> {
-    const { userAccountId, netAmount, bankAccountId, paymentCallback, withdrawalFeeAmount, withdrawalVatAmount } = payload
-    const serviceFee = withdrawalFeeAmount;
-    const vatAmount = withdrawalVatAmount;
-    const grossDeduction = netAmount + serviceFee + vatAmount; // Total deducted from user
-
-    // 1. Balance Check
-    const currentBalance = await this.ledgerService.getAccountBalance(userAccountId);
-    if (currentBalance < grossDeduction) {
-      throw new BadRequestException('Insufficient wallet balance to cover withdrawal and fees.');
+        return this.ledgerService.createTransaction({
+            entriesData: entries,
+            metadata: {
+                event: 'P2P_TRANSFER'
+            },
+            type: 'P2P_TRANSFER'
+        });
     }
 
-    // 2. Define Entries: DEBIT user for GROSS, CREDIT cash/revenue for NET
-    const entries: EntryDto[] = [
-      // DEBIT: User Wallet (Deduct the total gross amount)
-      { accountId: userAccountId, direction: Direction.DEBIT, amount: grossDeduction, description: 'Gross Withdrawal Request' },
+    // --------------------------------------
+    // Escrow Operations (Business Layer Only)
+    // --------------------------------------
 
-      // CREDIT: External Cash (Net amount sent to user)
-      { accountId: this.EXTERNAL_CASH_ACCOUNT_ID, direction: Direction.CREDIT, amount: netAmount, description: 'External Payout Earmarked (Net)' },
+    async fundEscrow(
+        buyerAccountId: string,
+        amount: number,
+        escrowRefId: string,
+        currency: string
+    ) {
 
-      // CREDIT: Platform Revenue (Fee Collection)
-      { accountId: this.PLATFORM_REVENUE_ACCOUNT_ID, direction: Direction.CREDIT, amount: serviceFee, description: 'Withdrawal Service Fee (Net)' },
+        const minor = BigInt(Math.round(amount * 100));
 
-      // CREDIT: Tax Liability (VAT Collection)
-      { accountId: this.TAX_LIABILITY_ACCOUNT_ID, direction: Direction.CREDIT, amount: vatAmount, description: 'VAT on Withdrawal Fee' },
-    ];
+        const entries: EntryDto[] = [
+            {
+                accountId: buyerAccountId,
+                direction: Direction.DEBIT,
+                amountMinor: minor.toString(),
+                currency: currency,
+                description: `Escrow lock ${escrowRefId}`
+            },
+            {
+                accountId: this.ESCROW_HOLDING_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: minor.toString(),
+                currency: currency,
+                description: 'Escrow holding'
+            }
+        ];
 
-    // 3. Atomic Execution: Move funds internally 
-    const transaction = await this.ledgerService.createTransaction({
-      type: TransactionType.WITHDRAWAL,
-      entriesData: entries,
-      mainAccountId: userAccountId
-    });
-
-    try {
-      // 4. External Call: Initiate payout via PG
-      const gatewayRefId = await paymentCallback({
-        paymentMethodId: bankAccountId,
-        amount: grossDeduction,
-        transactionId: transaction.id
-      });
-
-      // 5. Update Ref and Status: Mark as PENDING until confirmed by bank/PG
-      await this.ledgerService.updateTransaction(
-        transaction.id,
-        { gatewayRefId: gatewayRefId, status: TransactionStatus.PENDING }
-      );
-
-      return transaction;
-
-    } catch (error) {
-      // 6. CRITICAL Reversal: If PG fails immediately, reverse the internal debit.
-      await this.handleFailedWithdrawal(transaction, userAccountId, grossDeduction, serviceFee, withdrawalVatAmount);
-      throw new InternalServerErrorException('Payout failed, funds reversed to wallet.');
+        return this.ledgerService.createTransaction({
+            entriesData: entries,
+            metadata: { escrowRefId, event: 'ESCROW_LOCK' },
+            type: 'ESCROW'
+        });
     }
-  }
 
-  // --- 4. Helper for Withdrawal Reversals ---
+    async releaseEscrow(
+        sellerAccountId: string,
+        amount: number,
+        escrowRefId: string,
+        currency: string
+    ) {
 
-  // src/wallet/wallet.service.ts (Corrected handleFailedWithdrawal)
+        const minor = BigInt(Math.round(amount * 100));
 
-  private async handleFailedWithdrawal(
-    originalTransaction: Transaction,
-    userAccountId: string,
-    grossAmount: number, // The full amount deducted from the user
-    serviceFee: number,
-    vatAmount: number
-  ) {
+        const entries: EntryDto[] = [
+            {
+                accountId: this.ESCROW_HOLDING_ACCOUNT_ID,
+                direction: Direction.DEBIT,
+                amountMinor: minor.toString(),
+                currency: currency,
+                description: 'Escrow release'
+            },
+            {
+                accountId: sellerAccountId,
+                direction: Direction.CREDIT,
+                amountMinor: minor.toString(),
+                currency: currency,
+                description: 'Escrow payout'
+            }
+        ];
 
-    const netAmount = grossAmount - serviceFee - vatAmount;
+        return this.ledgerService.createTransaction({
+            entriesData: entries,
+            metadata: { escrowRefId, event: 'ESCROW_RELEASE' },
+            type: 'ESCROW'
+        });
+    }
 
-    // ---------------------------------------------------------------------
+    // --------------------------------------
+    // External Deposit Lifecycle
+    // --------------------------------------
 
-    // 1. Mark original transaction as FAILED (Correct)
-    await this.ledgerService.updateTransaction(
-      originalTransaction.id,
-      { status: TransactionStatus.FAILED }
-    );
+    async handleDeposit(payload: {
+        userAccountId: string;
+        grossAmount: number;
+        paymentToken: string;
+        paymentCallback: PaymentCallback;
+        depositFeeRate: number;
+        depositVatRate: number;
+        currency: string
+    }): Promise<Transaction> {
 
-    // 2. Define Reversal Entries (4 entries to perfectly undo the original 4)
-    const reversalEntries: EntryDto[] = [
-      // 1. UNDO DEBIT User Wallet -> CREDIT User Wallet
-      { accountId: userAccountId, direction: Direction.CREDIT, amount: grossAmount, description: 'Withdrawal Reversal: Funds returned to user' },
+        const {
+            userAccountId,
+            grossAmount,
+            paymentToken,
+            paymentCallback,
+            depositFeeRate,
+            depositVatRate,
+            currency
+        } = payload;
 
-      // 2. UNDO CREDIT External Cash -> DEBIT External Cash (Only the net amount)
-      { accountId: this.EXTERNAL_CASH_ACCOUNT_ID, direction: Direction.DEBIT, amount: netAmount, description: 'Withdrawal Reversal: Remove Net Payout earmark' },
+        const serviceFee = grossAmount * depositFeeRate;
+        const vatAmount = serviceFee * depositVatRate;
+        const netDeposit = grossAmount - serviceFee - vatAmount;
 
-      // 3. UNDO CREDIT Platform Revenue -> DEBIT Platform Revenue (Remove unearned income)
-      { accountId: this.PLATFORM_REVENUE_ACCOUNT_ID, direction: Direction.DEBIT, amount: serviceFee, description: 'Withdrawal Reversal: Reverse unearned Service Fee' },
+        const pendingTransaction = await this.ledgerService.createPendingTransaction(
+            'DEPOSIT',
+            this.toMinor(grossAmount).toString(),
+            currency,
+            userAccountId,
+        );
 
-      // 4. UNDO CREDIT Tax Liability -> DEBIT Tax Liability (Reverse VAT obligation)
-      { accountId: this.TAX_LIABILITY_ACCOUNT_ID, direction: Direction.DEBIT, amount: vatAmount, description: 'Withdrawal Reversal: Reverse VAT Liability' },
-    ];
+        try {
 
-    // 3. Execute the atomic reversal transaction
-    return this.ledgerService.createTransaction({
-      type: TransactionType.REVERSAL,
-      entriesData: reversalEntries,
-      mainAccountId: userAccountId // Main account for the reversal event
-    });
-  }
+            const gatewayRefId = await paymentCallback({
+                paymentMethodId: paymentToken,
+                amount: netDeposit,
+                transactionId: pendingTransaction.id,
+            });
 
-  async getWalletBalance(accountId: string): Promise<number> {
-    const balance = await this.ledgerService.getAccountBalance(accountId);
-    return balance;
-  }
+            await this.ledgerService.updateTransaction(
+                pendingTransaction.id,
+                { gatewayRefId }
+            );
 
-  async getWalletTransactions(accountId: string): Promise<Transaction[]> {
-    const transactions = await this.ledgerService.getAccountTransactions(accountId);
-    return transactions;
-  }
+            return pendingTransaction;
+
+        } catch {
+            await this.ledgerService.updateTransaction(
+                pendingTransaction.id,
+                { status: TransactionStatus.FAILED }
+            );
+
+            throw new BadRequestException('Payment gateway charge failed.');
+        }
+    }
+
+    async handleWithdrawal(payload: {
+        userAccountId: string;
+        netAmount: number;
+        bankAccountId: string;
+        paymentCallback: PaymentCallback;
+        withdrawalFeeAmount: number;
+        withdrawalVatAmount: number;
+        currency: string
+    }): Promise<Transaction> {
+
+        const {
+            userAccountId,
+            netAmount,
+            bankAccountId,
+            paymentCallback,
+            withdrawalFeeAmount,
+            withdrawalVatAmount,
+            currency
+        } = payload;
+
+        const serviceFee = withdrawalFeeAmount;
+        const vatAmount = withdrawalVatAmount;
+        const grossDeduction = netAmount + serviceFee + vatAmount;
+
+        const balance = BigInt(
+            await this.ledgerService.getAccountBalance(userAccountId)
+        );
+
+        if (balance < this.toMinor(grossDeduction)) {
+            throw new BadRequestException('Insufficient wallet balance.');
+        }
+
+        const entries: EntryDto[] = [
+            // User debit
+            {
+                accountId: userAccountId,
+                direction: Direction.DEBIT,
+                amountMinor: this.toMinor(grossDeduction).toString(),
+                currency: currency,
+                description: 'Withdrawal gross deduction'
+            },
+
+            // External payout clearing
+            {
+                accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: this.toMinor(netAmount).toString(),
+                currency: currency,
+                description: 'Payout earmark'
+            },
+
+            // Revenue
+            {
+                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: this.toMinor(serviceFee).toString(),
+                currency: currency,
+                description: 'Service fee revenue'
+            },
+
+            // VAT
+            {
+                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                direction: Direction.CREDIT,
+                amountMinor: this.toMinor(vatAmount).toString(),
+                currency: currency,
+                description: 'VAT liability'
+            }
+        ];
+
+        const transaction = await this.ledgerService.createTransaction({
+            entriesData: entries,
+            metadata: { event: 'WITHDRAWAL' },
+            type: 'WITHDRAWAL'
+        });
+
+        try {
+
+            const gatewayRefId = await paymentCallback({
+                paymentMethodId: bankAccountId,
+                amount: grossDeduction,
+                transactionId: transaction.id
+            });
+
+            await this.ledgerService.updateTransaction(transaction.id, {
+                gatewayRefId,
+                status: TransactionStatus.PENDING
+            });
+
+            return transaction;
+
+        } catch {
+
+            await this.handleFailedWithdrawal(
+                transaction,
+                userAccountId,
+                grossDeduction,
+                serviceFee,
+                withdrawalVatAmount,
+                currency
+            );
+
+            throw new InternalServerErrorException('Payout failed.');
+        }
+    }
+
+    private async handleFailedWithdrawal(
+        originalTransaction: Transaction,
+        userAccountId: string,
+        grossAmount: number,
+        serviceFee: number,
+        vatAmount: number,
+        currency: string
+    ) {
+
+        const netAmount = grossAmount - serviceFee - vatAmount;
+
+        await this.ledgerService.updateTransaction(
+            originalTransaction.id,
+            { status: TransactionStatus.FAILED }
+        );
+
+        const reversalEntries: EntryDto[] = [
+
+            // Reverse user debit → credit back full gross amount
+            {
+                accountId: userAccountId,
+                direction: Direction.CREDIT,
+                amountMinor: this.toMinor(grossAmount).toString(),
+                currency: currency,
+                description: 'Withdrawal reversal - user refund'
+            },
+
+            // Reverse external payout earmark
+            {
+                accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                direction: Direction.DEBIT,
+                amountMinor: this.toMinor(netAmount).toString(),
+                currency: currency,
+                description: 'Withdrawal reversal - external cash correction'
+            },
+
+            // Reverse platform revenue
+            {
+                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                direction: Direction.DEBIT,
+                amountMinor: this.toMinor(serviceFee).toString(),
+                currency: currency,
+                description: 'Withdrawal reversal - revenue rollback'
+            },
+
+            // Reverse VAT liability
+            {
+                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                direction: Direction.DEBIT,
+                amountMinor: this.toMinor(vatAmount).toString(),
+                currency: currency,
+                description: 'Withdrawal reversal - VAT rollback'
+            }
+        ];
+
+
+        return this.ledgerService.createTransaction({
+            entriesData: reversalEntries,
+            metadata: { event: 'WITHDRAWAL_REVERSAL' },
+            type: 'WITHDRAWAL'
+        });
+    }
+
+    async getWalletBalance(accountId: string): Promise<number> {
+        const balance = await this.ledgerService.getAccountBalance(accountId);
+        return Number(balance) / 100;
+    }
+
+    async getWalletTransactions(accountId: string): Promise<Transaction[]> {
+        return this.ledgerService.getAccountTransactions(accountId);
+    }
 }
