@@ -91,19 +91,23 @@ export class WebhookService {
         // Mark the original PENDING transaction as REVERSED/COMPLETED, 
         // or simply mark the new final transaction as SUCCESS and delete the pending one (if your architecture allows).
         // A common pattern is to just update the PENDING transaction's status to SUCCESS:
-        await this.ledgerService.updateTransaction(
-            pendingTransaction.id, 
-            { status: TransactionStatus.POSTED }
-        );
+        await this.ledgerService.updateTransactionStatus({
+            tenantId: pendingTransaction.tenantId,
+            transactionId: pendingTransaction.id,
+            newStatus: TransactionStatus.POSTED,
+            gatewayRefId: externalRefId
+        });
 
         return finalTransaction;
     } catch (error) {
       console.error('Failed to create final ledger entries:', error);
       // Critical: Alert operations team if reconciliation failed.
-      await this.ledgerService.updateTransaction(
-        pendingTransaction.id, 
-        { status: TransactionStatus.FAILED }
-    );
+      await this.ledgerService.updateTransactionStatus({
+        tenantId: pendingTransaction.tenantId,
+        transactionId: pendingTransaction.id,
+        newStatus: TransactionStatus.FAILED,
+        gatewayRefId: externalRefId
+      });
       throw new InternalServerErrorException('Ledger finalization failed.');
     }
   }

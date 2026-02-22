@@ -197,7 +197,11 @@ export class WalletService {
         paymentCallback: PaymentCallback;
         depositFeeRate: number;
         depositVatRate: number;
-        currency: string
+        currency: string;
+        tenantId?: string;
+        idempotencyKey?: string;
+        metadata?: Record<string, any>;
+        type?: string;  // DEPOSIT, CREDIT, etc.
     }): Promise<Transaction> {
 
         const {
@@ -207,19 +211,26 @@ export class WalletService {
             paymentCallback,
             depositFeeRate,
             depositVatRate,
-            currency
+            currency,
+            tenantId,
+            idempotencyKey,
+            metadata,
+            type
         } = payload;
 
         const serviceFee = grossAmount * depositFeeRate;
         const vatAmount = serviceFee * depositVatRate;
         const netDeposit = grossAmount - serviceFee - vatAmount;
 
-        const pendingTransaction = await this.ledgerService.createPendingTransaction(
-            'DEPOSIT',
-            this.toMinor(grossAmount).toString(),
-            currency,
-            userAccountId,
-        );
+        const pendingTransaction = await this.ledgerService.createPendingTransaction({
+            tenantId,
+            type: type,
+            amountMinor: this.toMinor(grossAmount).toString(),
+            currency: currency,
+            mainAccountId: userAccountId,
+            idempotencyKey: idempotencyKey,
+            metadata: metadata,
+        });
 
         try {
 
@@ -229,19 +240,22 @@ export class WalletService {
                 transactionId: pendingTransaction.id,
             });
 
-            await this.ledgerService.updateTransaction(
-                pendingTransaction.id,
-                { gatewayRefId }
-            );
+            await this.ledgerService.updateTransactionStatus({
+                tenantId,
+                transactionId: pendingTransaction.id,
+                newStatus: TransactionStatus.POSTED,
+                gatewayRefId: gatewayRefId
+            });
 
             return pendingTransaction;
 
-        } catch {
-            await this.ledgerService.updateTransaction(
-                pendingTransaction.id,
-                { status: TransactionStatus.FAILED }
-            );
-
+        } catch (error) {
+            await this.ledgerService.updateTransactionStatus({
+                tenantId,
+                transactionId: pendingTransaction.id,
+                newStatus: TransactionStatus.FAILED,
+                gatewayRefId: null
+            });
             throw new BadRequestException('Payment gateway charge failed.');
         }
     }
@@ -330,14 +344,16 @@ export class WalletService {
                 transactionId: transaction.id
             });
 
-            await this.ledgerService.updateTransaction(transaction.id, {
-                gatewayRefId,
-                status: TransactionStatus.PENDING
+            await this.ledgerService.updateTransactionStatus({
+                tenantId: transaction.tenantId,
+                transactionId: transaction.id,
+                newStatus: TransactionStatus.POSTED,
+                gatewayRefId: gatewayRefId
             });
 
             return transaction;
 
-        } catch {
+        } catch (error) {
 
             await this.handleFailedWithdrawal(
                 transaction,
@@ -363,10 +379,12 @@ export class WalletService {
 
         const netAmount = grossAmount - serviceFee - vatAmount;
 
-        await this.ledgerService.updateTransaction(
-            originalTransaction.id,
-            { status: TransactionStatus.FAILED }
-        );
+        await this.ledgerService.updateTransactionStatus({
+            tenantId: originalTransaction.tenantId,
+            transactionId: originalTransaction.id,
+            newStatus: TransactionStatus.FAILED,
+            gatewayRefId: null
+        });
 
         const reversalEntries: EntryDto[] = [
 
