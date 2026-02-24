@@ -31,6 +31,10 @@ export class WalletService {
         return BigInt(Math.round(amount * 100));
     }
 
+    private computeRateMinor(amountMinor: bigint, rate: number): bigint {
+        return BigInt(Math.round(Number(amountMinor) * rate));
+    }
+
     // --------------------------------------
     // P2P Transfer
     // --------------------------------------
@@ -52,7 +56,7 @@ export class WalletService {
         const totalDeduction = principalMinor + feeMinor + vatMinor;
 
         const balance = BigInt(
-            await this.ledgerService.getAccountBalance(senderAccountId)
+            await this.ledgerService.getAccountBalance(senderAccountId, currency)
         );
 
         if (balance < totalDeduction) {
@@ -112,7 +116,8 @@ export class WalletService {
             metadata: {
                 event: 'P2P_TRANSFER'
             },
-            type: 'P2P_TRANSFER'
+            type: 'P2P_TRANSFER',
+            ownerAccountId: senderAccountId,
         });
     }
 
@@ -149,7 +154,8 @@ export class WalletService {
         return this.ledgerService.createTransaction({
             entriesData: entries,
             metadata: { escrowRefId, event: 'ESCROW_LOCK' },
-            type: 'ESCROW'
+            type: 'ESCROW',
+            ownerAccountId: buyerAccountId,
         });
     }
 
@@ -182,7 +188,8 @@ export class WalletService {
         return this.ledgerService.createTransaction({
             entriesData: entries,
             metadata: { escrowRefId, event: 'ESCROW_RELEASE' },
-            type: 'ESCROW'
+            type: 'ESCROW',
+            ownerAccountId: sellerAccountId,
         });
     }
 
@@ -218,26 +225,82 @@ export class WalletService {
             type
         } = payload;
 
-        const serviceFee = grossAmount * depositFeeRate;
-        const vatAmount = serviceFee * depositVatRate;
-        const netDeposit = grossAmount - serviceFee - vatAmount;
+        const grossMinor = this.toMinor(grossAmount);
+        const feeMinor = this.computeRateMinor(grossMinor, depositFeeRate);
+        const vatMinor = this.computeRateMinor(feeMinor, depositVatRate);
+        const netMinor = grossMinor - feeMinor - vatMinor;
+
+        if (netMinor < 0n) {
+            throw new BadRequestException('Deposit configuration produced a negative net amount.');
+        }
 
         const pendingTransaction = await this.ledgerService.createPendingTransaction({
             tenantId,
-            type: type,
-            amountMinor: this.toMinor(grossAmount).toString(),
+            type: type ?? 'DEPOSIT',
+            amountMinor: grossMinor.toString(),
             currency: currency,
-            mainAccountId: userAccountId,
+            ownerAccountId: userAccountId,
             idempotencyKey: idempotencyKey,
-            metadata: metadata,
+            metadata: {
+                ...metadata,
+                depositFeeRate,
+                depositVatRate,
+            },
         });
 
         try {
 
             const gatewayRefId = await paymentCallback({
                 paymentMethodId: paymentToken,
-                amount: netDeposit,
+                amount: grossAmount,
                 transactionId: pendingTransaction.id,
+            });
+
+            const postedTransaction = await this.ledgerService.createTransaction({
+                type: type ?? 'DEPOSIT',
+                ownerAccountId: userAccountId,
+                gatewayRefId,
+                tenantId,
+                idempotencyKey: `deposit-post:${pendingTransaction.id}`,
+                metadata: {
+                    ...metadata,
+                    event: 'DEPOSIT_POSTED',
+                    pendingTransactionId: pendingTransaction.id,
+                },
+                entriesData: [
+                    {
+                        tenantId,
+                        accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                        direction: Direction.DEBIT,
+                        amountMinor: grossMinor.toString(),
+                        currency,
+                        description: 'Deposit gross amount received',
+                    },
+                    {
+                        tenantId,
+                        accountId: userAccountId,
+                        direction: Direction.CREDIT,
+                        amountMinor: netMinor.toString(),
+                        currency,
+                        description: 'Net deposit to wallet',
+                    },
+                    {
+                        tenantId,
+                        accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                        direction: Direction.CREDIT,
+                        amountMinor: feeMinor.toString(),
+                        currency,
+                        description: 'Deposit service fee',
+                    },
+                    {
+                        tenantId,
+                        accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                        direction: Direction.CREDIT,
+                        amountMinor: vatMinor.toString(),
+                        currency,
+                        description: 'Deposit fee VAT',
+                    },
+                ],
             });
 
             await this.ledgerService.updateTransactionStatus({
@@ -247,7 +310,7 @@ export class WalletService {
                 gatewayRefId: gatewayRefId
             });
 
-            return pendingTransaction;
+            return postedTransaction;
 
         } catch (error) {
             await this.ledgerService.updateTransactionStatus({
@@ -285,7 +348,7 @@ export class WalletService {
         const grossDeduction = netAmount + serviceFee + vatAmount;
 
         const balance = BigInt(
-            await this.ledgerService.getAccountBalance(userAccountId)
+            await this.ledgerService.getAccountBalance(userAccountId, currency)
         );
 
         if (balance < this.toMinor(grossDeduction)) {
@@ -333,7 +396,9 @@ export class WalletService {
         const transaction = await this.ledgerService.createTransaction({
             entriesData: entries,
             metadata: { event: 'WITHDRAWAL' },
-            type: 'WITHDRAWAL'
+            type: 'WITHDRAWAL',
+            ownerAccountId: userAccountId,
+            status: TransactionStatus.PENDING,
         });
 
         try {
@@ -429,7 +494,8 @@ export class WalletService {
         return this.ledgerService.createTransaction({
             entriesData: reversalEntries,
             metadata: { event: 'WITHDRAWAL_REVERSAL' },
-            type: 'WITHDRAWAL'
+            type: 'WITHDRAWAL',
+            ownerAccountId: userAccountId,
         });
     }
 

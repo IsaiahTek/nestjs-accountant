@@ -20,6 +20,6 @@ export class Balance {
   @Column({ type: 'bigint', default: 0 })
   amountMinor: string; // stored as string for bigint safety
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
 }

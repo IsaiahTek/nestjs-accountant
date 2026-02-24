@@ -25,8 +25,8 @@ export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  tenantId: string;
+  @Column({ type: 'uuid', nullable: true })
+  tenantId?: string;
 
   @Column({ type: 'uuid', nullable: true })
   ownerId: string | null;
@@ -41,15 +41,15 @@ export class Transaction {
   @Column({ type: 'enum', enum: TransactionStatus, default: TransactionStatus.PENDING })
   status: TransactionStatus;
 
-  @Column({ type: 'string', nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   type?: string;
 
   @Column({ nullable: true })
-  gatewayRefId: string;
+  gatewayRefId?: string | null;
 
   // 🔥 Idempotency for webhook retries
-  @Column()
-  idempotencyKey: string;
+  @Column({ nullable: true })
+  idempotencyKey?: string;
 
   // 🔥 Optional FX support
   @Column({ nullable: true })

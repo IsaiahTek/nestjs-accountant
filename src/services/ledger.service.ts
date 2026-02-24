@@ -1,11 +1,10 @@
 // src/ledger/ledger.service.ts
-import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager, QueryRunner } from 'typeorm';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { DataSource, QueryRunner } from 'typeorm';
 import { Transaction, TransactionStatus } from '../entity/transaction.entity';
 import { Entry, Direction } from '../entity/entry.entity';
 import { EntryDto } from '../dto/entry.dto';
 import { Balance } from '../entity/balance.entity';
-import { Account } from '../entity/account.entity';
 
 @Injectable()
 export class LedgerService {
@@ -42,44 +41,77 @@ export class LedgerService {
         return transaction;
     }
 
-    async applyBalanceDelta(
+    async findPendingTransactionById(transactionId: string): Promise<Transaction> {
+        const transaction = await this.dataSource.getRepository(Transaction).findOne({
+            where: {
+                id: transactionId,
+                status: TransactionStatus.PENDING,
+            },
+        });
+
+        if (!transaction) {
+            throw new NotFoundException(`Pending transaction with id ${transactionId} not found.`);
+        }
+
+        return transaction;
+    }
+
+    private getBalanceKey(accountId: string, currency: string): string {
+        return `${accountId}::${currency}`;
+    }
+
+    private parseBalanceKey(key: string): { accountId: string; currency: string } {
+        const [accountId, currency] = key.split('::');
+        return { accountId, currency };
+    }
+
+    private async applyBalanceDelta(
         queryRunner: QueryRunner,
         accountId: string,
-        deltaMinor: string, // signed bigint string
+        currency: string,
+        deltaMinor: bigint,
+        tenantId?: string,
     ): Promise<void> {
-        const result = await queryRunner.manager
-            .createQueryBuilder()
-            .update(Account)
-            .set({
-                balanceMinor: () => `"balance_minor" + :delta`,
-            })
-            .where(`id = :accountId`)
-            .andWhere(`
-        allow_negative = true
-        OR "balance_minor" + :delta >= - "overdraft_limit_minor"
-      `)
-            .setParameters({
-                delta: deltaMinor,
-                accountId,
-            })
-            .execute();
+        const repo = queryRunner.manager.getRepository(Balance);
+        let balance = await repo.findOne({
+            where: { accountId, currency },
+            lock: { mode: 'pessimistic_write' },
+        });
 
-        if (result.affected === 0) {
-            throw new Error('Insufficient funds or overdraft limit exceeded');
+        if (!balance) {
+            if (deltaMinor < 0n) {
+                throw new BadRequestException(`Insufficient funds in account ${accountId}`);
+            }
+
+            balance = repo.create({
+                tenantId,
+                accountId,
+                currency,
+                amountMinor: '0',
+            });
         }
+
+        const nextAmount = BigInt(balance.amountMinor) + deltaMinor;
+        if (nextAmount < 0n) {
+            throw new BadRequestException(`Insufficient funds in account ${accountId}`);
+        }
+
+        balance.amountMinor = nextAmount.toString();
+        await repo.save(balance);
     }
 
     private aggregateDeltas(entries: EntryDto[]): Map<string, bigint> {
         const map = new Map<string, bigint>();
 
         for (const entry of entries) {
-            const current = map.get(entry.accountId) ?? 0n;
+            const key = this.getBalanceKey(entry.accountId, entry.currency);
+            const current = map.get(key) ?? 0n;
             const delta =
                 entry.direction === 'DEBIT'
                     ? -BigInt(entry.amountMinor)
                     : BigInt(entry.amountMinor);
 
-            map.set(entry.accountId, current + delta);
+            map.set(key, current + delta);
         }
 
         return map;
@@ -92,12 +124,25 @@ export class LedgerService {
     async createTransaction(payload: {
         type: string;
         entriesData: EntryDto[];
-        mainAccountId?: string;
+        ownerAccountId?: string;
         gatewayRefId?: string;
         idempotencyKey?: string;
         metadata?: Record<string, any>;
+        tenantId?: string;
+        status?: TransactionStatus;
     }): Promise<Transaction> {
         const { type, entriesData, gatewayRefId, idempotencyKey, metadata } = payload;
+
+        if (!entriesData.length) {
+            throw new BadRequestException('Transaction must include at least one entry.');
+        }
+
+        const currency = entriesData[0].currency;
+        if (entriesData.some((entry) => entry.currency !== currency)) {
+            throw new BadRequestException('All entries in a transaction must have the same currency.');
+        }
+
+        const tenantId = payload.tenantId ?? entriesData[0].tenantId;
 
         // -----------------------------
         // 1️⃣ Validate Double Entry
@@ -128,9 +173,12 @@ export class LedgerService {
             // -----------------------------
 
             if (idempotencyKey) {
+                const whereClause = tenantId === undefined
+                    ? { idempotencyKey }
+                    : { idempotencyKey, tenantId };
                 const existing = await queryRunner.manager
                     .getRepository(Transaction)
-                    .findOne({ where: { idempotencyKey } });
+                    .findOne({ where: whereClause });
 
                 if (existing) {
                     await queryRunner.rollbackTransaction();
@@ -148,11 +196,14 @@ export class LedgerService {
             // 4️⃣ Atomic Balance Enforcement
             // -----------------------------
 
-            for (const [accountId, delta] of deltas.entries()) {
+            for (const [key, delta] of deltas.entries()) {
+                const { accountId, currency: entryCurrency } = this.parseBalanceKey(key);
                 await this.applyBalanceDelta(
                     queryRunner,
                     accountId,
-                    delta.toString()
+                    entryCurrency,
+                    delta,
+                    tenantId,
                 );
             }
 
@@ -162,14 +213,14 @@ export class LedgerService {
 
             const transaction = queryRunner.manager.create(Transaction, {
                 type,
-                status: TransactionStatus.POSTED,
                 gatewayRefId,
                 idempotencyKey,
                 metadata,
                 amountMinor: totalDebit.toString(),
-                currency: entriesData[0]?.currency,
-                mainAccountId: payload.mainAccountId,
-                tenantId: entriesData[0]?.tenantId,
+                currency,
+                ownerId: payload.ownerAccountId ?? null,
+                tenantId,
+                status: payload.status ?? TransactionStatus.POSTED,
             });
 
             await queryRunner.manager.save(transaction);
@@ -210,13 +261,14 @@ export class LedgerService {
 
     async createPendingTransaction(
         payload: {
-            tenantId: string;
+            tenantId?: string;
             type: string;
             amountMinor: string;
             currency: string;
-            mainAccountId: string;
+            ownerAccountId: string;
             idempotencyKey?: string;
             metadata?: Record<string, any>;
+            gatewayRefId?: string;
         }
     ): Promise<Transaction> {
 
@@ -225,17 +277,19 @@ export class LedgerService {
             type,
             amountMinor,
             currency,
-            mainAccountId,
+            ownerAccountId,
             idempotencyKey,
             metadata,
+            gatewayRefId,
         } = payload;
 
         return this.dataSource.transaction(async (manager) => {
 
             if (idempotencyKey) {
-                const existing = await manager.findOne(Transaction, {
-                    where: { tenantId, idempotencyKey },
-                });
+                const whereClause = tenantId === undefined
+                    ? { idempotencyKey }
+                    : { tenantId, idempotencyKey };
+                const existing = await manager.findOne(Transaction, { where: whereClause });
 
                 if (existing) return existing;
             }
@@ -246,9 +300,10 @@ export class LedgerService {
                 status: TransactionStatus.PENDING,
                 amountMinor,
                 currency,
-                mainAccountId,
+                ownerId: ownerAccountId,
                 idempotencyKey,
                 metadata,
+                gatewayRefId,
             });
 
             return manager.save(tx);
@@ -256,23 +311,31 @@ export class LedgerService {
     }
 
     async updateTransactionStatus({tenantId, transactionId, newStatus, gatewayRefId}: {
-        tenantId: string,
+        tenantId?: string,
         transactionId: string,
         newStatus: TransactionStatus,
-        gatewayRefId: string
+        gatewayRefId?: string | null
     }): Promise<void> {
 
         await this.dataSource.transaction(async (manager) => {
 
-            const tx = await manager.findOne(Transaction, {
-                where: { id: transactionId, tenantId },
-            });
+            const whereClause = tenantId === undefined
+                ? { id: transactionId }
+                : { id: transactionId, tenantId };
+
+            const tx = await manager.findOne(Transaction, { where: whereClause });
 
             if (!tx) {
                 throw new NotFoundException('Transaction not found');
             }
 
             // Lifecycle rules
+            if (tx.status === newStatus) {
+                tx.gatewayRefId = gatewayRefId ?? tx.gatewayRefId ?? null;
+                await manager.save(tx);
+                return;
+            }
+
             if (tx.status === TransactionStatus.POSTED) {
                 throw new BadRequestException('Posted transaction cannot be modified');
             }
@@ -281,7 +344,7 @@ export class LedgerService {
                 throw new BadRequestException('Reversed transaction cannot be modified');
             }
 
-            tx.gatewayRefId = gatewayRefId; // Ensure it's null if undefined
+            tx.gatewayRefId = gatewayRefId ?? null;
 
             tx.status = newStatus;
 
@@ -289,10 +352,14 @@ export class LedgerService {
         });
     }
 
-    async getAccountBalance(accountId: string): Promise<string> {
-        const balance = await this.dataSource
-            .getRepository(Balance)
-            .findOneBy({ accountId });
+    async getAccountBalance(accountId: string, currency?: string): Promise<string> {
+        const repo = this.dataSource.getRepository(Balance);
+        const balance = currency
+            ? await repo.findOneBy({ accountId, currency })
+            : await repo.findOne({
+                where: { accountId },
+                order: { updatedAt: 'DESC' },
+            });
 
         return balance?.amountMinor ?? '0';
     }

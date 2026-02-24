@@ -4,7 +4,9 @@
   "description": "The easiest, most reliable and compliant way of managing financial transactions in your backend (NestJs) app with good auditing and reporting capabilities.",
   "main": "/dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run typecheck"
   },
   "keywords": [
     "Finance",
@@ -24,6 +26,7 @@
     "@nestjs/core": "^11.1.9",
     "@types/node": "^24.10.1",
     "nestjs": "^0.0.1",
+    "typescript": "^5.9.3",
     "typeorm": "^0.3.27"
   }
 }
