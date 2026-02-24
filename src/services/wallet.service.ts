@@ -330,7 +330,10 @@ export class WalletService {
         paymentCallback: PaymentCallback;
         withdrawalFeeAmount: number;
         withdrawalVatAmount: number;
-        currency: string
+        currency: string;
+        tenantId?: string;
+        idempotencyKey?: string;
+        metadata?: Record<string, any>;
     }): Promise<Transaction> {
 
         const {
@@ -340,7 +343,10 @@ export class WalletService {
             paymentCallback,
             withdrawalFeeAmount,
             withdrawalVatAmount,
-            currency
+            currency,
+            tenantId,
+            idempotencyKey,
+            metadata,
         } = payload;
 
         const serviceFee = withdrawalFeeAmount;
@@ -358,6 +364,7 @@ export class WalletService {
         const entries: EntryDto[] = [
             // User debit
             {
+                tenantId,
                 accountId: userAccountId,
                 direction: Direction.DEBIT,
                 amountMinor: this.toMinor(grossDeduction).toString(),
@@ -367,6 +374,7 @@ export class WalletService {
 
             // External payout clearing
             {
+                tenantId,
                 accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
                 direction: Direction.CREDIT,
                 amountMinor: this.toMinor(netAmount).toString(),
@@ -376,6 +384,7 @@ export class WalletService {
 
             // Revenue
             {
+                tenantId,
                 accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
                 direction: Direction.CREDIT,
                 amountMinor: this.toMinor(serviceFee).toString(),
@@ -385,6 +394,7 @@ export class WalletService {
 
             // VAT
             {
+                tenantId,
                 accountId: this.TAX_LIABILITY_ACCOUNT_ID,
                 direction: Direction.CREDIT,
                 amountMinor: this.toMinor(vatAmount).toString(),
@@ -395,17 +405,33 @@ export class WalletService {
 
         const transaction = await this.ledgerService.createTransaction({
             entriesData: entries,
-            metadata: { event: 'WITHDRAWAL' },
+            metadata: {
+                ...metadata,
+                event: 'WITHDRAWAL',
+                netAmountMinor: this.toMinor(netAmount).toString(),
+                serviceFeeMinor: this.toMinor(serviceFee).toString(),
+                vatAmountMinor: this.toMinor(vatAmount).toString(),
+            },
             type: 'WITHDRAWAL',
             ownerAccountId: userAccountId,
             status: TransactionStatus.PENDING,
+            tenantId,
+            idempotencyKey,
         });
+
+        if (transaction.status === TransactionStatus.POSTED) {
+            return transaction;
+        }
+
+        if (transaction.status === TransactionStatus.FAILED) {
+            throw new BadRequestException('Withdrawal request has already failed.');
+        }
 
         try {
 
             const gatewayRefId = await paymentCallback({
                 paymentMethodId: bankAccountId,
-                amount: grossDeduction,
+                amount: netAmount,
                 transactionId: transaction.id
             });
 
@@ -426,7 +452,8 @@ export class WalletService {
                 grossDeduction,
                 serviceFee,
                 withdrawalVatAmount,
-                currency
+                currency,
+                tenantId,
             );
 
             throw new InternalServerErrorException('Payout failed.');
@@ -439,7 +466,8 @@ export class WalletService {
         grossAmount: number,
         serviceFee: number,
         vatAmount: number,
-        currency: string
+        currency: string,
+        tenantId?: string,
     ) {
 
         const netAmount = grossAmount - serviceFee - vatAmount;
@@ -455,6 +483,7 @@ export class WalletService {
 
             // Reverse user debit → credit back full gross amount
             {
+                tenantId,
                 accountId: userAccountId,
                 direction: Direction.CREDIT,
                 amountMinor: this.toMinor(grossAmount).toString(),
@@ -464,6 +493,7 @@ export class WalletService {
 
             // Reverse external payout earmark
             {
+                tenantId,
                 accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
                 direction: Direction.DEBIT,
                 amountMinor: this.toMinor(netAmount).toString(),
@@ -473,6 +503,7 @@ export class WalletService {
 
             // Reverse platform revenue
             {
+                tenantId,
                 accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
                 direction: Direction.DEBIT,
                 amountMinor: this.toMinor(serviceFee).toString(),
@@ -482,6 +513,7 @@ export class WalletService {
 
             // Reverse VAT liability
             {
+                tenantId,
                 accountId: this.TAX_LIABILITY_ACCOUNT_ID,
                 direction: Direction.DEBIT,
                 amountMinor: this.toMinor(vatAmount).toString(),
@@ -493,9 +525,14 @@ export class WalletService {
 
         return this.ledgerService.createTransaction({
             entriesData: reversalEntries,
-            metadata: { event: 'WITHDRAWAL_REVERSAL' },
+            metadata: {
+                event: 'WITHDRAWAL_REVERSAL',
+                reversedTransactionId: originalTransaction.id,
+            },
             type: 'WITHDRAWAL',
             ownerAccountId: userAccountId,
+            tenantId,
+            idempotencyKey: `withdrawal-reversal:${originalTransaction.id}`,
         });
     }
 
