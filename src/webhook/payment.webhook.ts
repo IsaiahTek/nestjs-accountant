@@ -25,7 +25,7 @@ export class WebhookService {
   /**
    * Finds the pending transaction and finalizes the deposit by creating ledger entries.
    */
-  async finalizeDeposit(externalRefId: string, payloadData: any): Promise<Transaction> {
+  async finalizeDeposit(externalRefId: string, payloadData: any & { transactionId?: string }): Promise<Transaction> {
     const pendingTransactionId = payloadData?.transactionId as string | undefined;
 
     const pendingTransaction = pendingTransactionId
