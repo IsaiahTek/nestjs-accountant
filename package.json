@@ -2,11 +2,23 @@
   "name": "nestjs-accountant",
   "version": "0.0.1",
   "description": "The easiest, most reliable and compliant way of managing financial transactions in your backend (NestJs) app with good auditing and reporting capabilities.",
-  "main": "/dist/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "Finance",
@@ -21,12 +33,27 @@
   ],
   "author": "Engr., Isaiah Pius",
   "license": "ISC",
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "reflect-metadata": "^0.1.12 || ^0.2.0",
+    "rxjs": "^7.1.0",
+    "typeorm": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "reflect-metadata": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@nestjs/common": "^11.1.9",
     "@nestjs/core": "^11.1.9",
     "@types/node": "^24.10.1",
     "nestjs": "^0.0.1",
-    "typescript": "^5.9.3",
-    "typeorm": "^0.3.27"
+    "typeorm": "^0.3.27",
+    "typescript": "^5.9.3"
   }
 }

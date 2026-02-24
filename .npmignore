@@ -1,2 +1,16 @@
-# NPM Ingnore file
+# Don't publish development files
 node_modules
+src
+.env
+.env.*
+dist/**/*.spec.*
+dist/**/*.test.*
+coverage
+.vscode
+.idea
+*.log
+.DS_Store
+npm-debug.log*
+tsconfig.json
+tsconfig.build.json
+jest.config.js
