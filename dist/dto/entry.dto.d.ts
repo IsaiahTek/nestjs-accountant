@@ -6,4 +6,7 @@ export declare class EntryDto {
     tenantId?: string;
     amountMinor: string;
     currency: string;
+    baseCurrency?: string;
+    baseAmountMinor?: string;
+    exchangeRate?: string;
 }

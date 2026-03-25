@@ -41,6 +41,6 @@ __decorate([
 ], Balance.prototype, "updatedAt", void 0);
 exports.Balance = Balance = __decorate([
     (0, typeorm_1.Entity)('balances'),
-    (0, typeorm_1.Index)(['accountId', 'currency'], { unique: true })
+    (0, typeorm_1.Index)(['tenantId', 'accountId', 'currency'], { unique: true })
 ], Balance);
 //# sourceMappingURL=balance.entity.js.map

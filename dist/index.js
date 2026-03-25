@@ -1,16 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AccountType = exports.Account = exports.Balance = exports.Direction = exports.Entry = exports.TransactionStatus = exports.Transaction = exports.WebhookService = exports.WalletService = exports.LedgerService = exports.ACCOUNTANT_MODULE_OPTIONS = exports.AccountantModule = void 0;
+exports.AccountType = exports.Account = exports.Balance = exports.Direction = exports.Entry = exports.TransactionStatus = exports.Transaction = exports.LedgerService = exports.ACCOUNTANT_MODULE_OPTIONS = exports.AccountantModule = void 0;
 var accountant_module_1 = require("./accountant.module");
 Object.defineProperty(exports, "AccountantModule", { enumerable: true, get: function () { return accountant_module_1.AccountantModule; } });
 var accountant_config_1 = require("./accountant.config");
 Object.defineProperty(exports, "ACCOUNTANT_MODULE_OPTIONS", { enumerable: true, get: function () { return accountant_config_1.ACCOUNTANT_MODULE_OPTIONS; } });
 var ledger_service_1 = require("./services/ledger.service");
 Object.defineProperty(exports, "LedgerService", { enumerable: true, get: function () { return ledger_service_1.LedgerService; } });
-var wallet_service_1 = require("./services/wallet.service");
-Object.defineProperty(exports, "WalletService", { enumerable: true, get: function () { return wallet_service_1.WalletService; } });
-var payment_webhook_1 = require("./webhook/payment.webhook");
-Object.defineProperty(exports, "WebhookService", { enumerable: true, get: function () { return payment_webhook_1.WebhookService; } });
 var transaction_entity_1 = require("./entity/transaction.entity");
 Object.defineProperty(exports, "Transaction", { enumerable: true, get: function () { return transaction_entity_1.Transaction; } });
 var transaction_entity_2 = require("./entity/transaction.entity");

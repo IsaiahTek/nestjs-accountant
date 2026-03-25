@@ -8,8 +8,12 @@ export declare enum AccountType {
 export declare class Account {
     id: string;
     tenantId?: string;
-    ownerId: string | null;
     accountType: AccountType;
+    referenceType?: string;
+    referenceId?: string;
+    tags?: string[];
+    context?: Record<string, any>;
+    metadata?: Record<string, any>;
     isFrozen: boolean;
     createdAt: Date;
 }

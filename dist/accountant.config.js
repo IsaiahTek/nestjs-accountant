@@ -2,14 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createAccountantOptionsProvider = exports.resolveAccountantModuleOptions = exports.defaultAccountantModuleOptions = exports.ACCOUNTANT_MODULE_OPTIONS = void 0;
 exports.ACCOUNTANT_MODULE_OPTIONS = 'ACCOUNTANT_MODULE_OPTIONS';
-exports.defaultAccountantModuleOptions = {
-    platformRevenueAccountId: 'uuid-revenue-acc',
-    taxLiabilityAccountId: 'uuid-tax-liability-acc',
-    externalCashAccountId: 'uuid-external-cash-acc',
-    escrowHoldingAccountId: 'uuid-escrow-acc',
-    depositFeeRate: 0.02,
-    depositVatRate: 0.15,
-};
+exports.defaultAccountantModuleOptions = {};
 const resolveAccountantModuleOptions = (options = {}) => ({
     ...exports.defaultAccountantModuleOptions,
     ...options,

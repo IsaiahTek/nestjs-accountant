@@ -10,6 +10,9 @@ export declare class Entry {
     direction: Direction;
     amountMinor: string;
     currency: string;
+    baseCurrency?: string;
+    baseAmountMinor?: string;
+    exchangeRate?: string;
     description: string;
     createdAt: Date;
 }

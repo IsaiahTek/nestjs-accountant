@@ -49,6 +49,18 @@ __decorate([
     __metadata("design:type", String)
 ], Entry.prototype, "currency", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 3, nullable: true }),
+    __metadata("design:type", String)
+], Entry.prototype, "baseCurrency", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'bigint', nullable: true }),
+    __metadata("design:type", String)
+], Entry.prototype, "baseAmountMinor", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'decimal', precision: 18, scale: 8, nullable: true }),
+    __metadata("design:type", String)
+], Entry.prototype, "exchangeRate", void 0);
+__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", String)
 ], Entry.prototype, "description", void 0);
@@ -58,7 +70,7 @@ __decorate([
 ], Entry.prototype, "createdAt", void 0);
 exports.Entry = Entry = __decorate([
     (0, typeorm_1.Entity)('entries'),
-    (0, typeorm_1.Index)(['transactionId']),
-    (0, typeorm_1.Index)(['accountId'])
+    (0, typeorm_1.Index)(['tenantId', 'transactionId']),
+    (0, typeorm_1.Index)(['tenantId', 'accountId'])
 ], Entry);
 //# sourceMappingURL=entry.entity.js.map

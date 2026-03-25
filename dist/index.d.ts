@@ -1,8 +1,6 @@
 export { AccountantModule } from './accountant.module';
 export { ACCOUNTANT_MODULE_OPTIONS, AccountantModuleOptions, ResolvedAccountantModuleOptions, } from './accountant.config';
 export { LedgerService } from './services/ledger.service';
-export { WalletService } from './services/wallet.service';
-export { WebhookService } from './webhook/payment.webhook';
 export { Transaction } from './entity/transaction.entity';
 export { TransactionStatus } from './entity/transaction.entity';
 export { Entry } from './entity/entry.entity';

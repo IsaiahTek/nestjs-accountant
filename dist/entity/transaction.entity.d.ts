@@ -7,16 +7,18 @@ export declare enum TransactionStatus {
 export declare class Transaction {
     id: string;
     tenantId?: string;
-    ownerId: string | null;
     amountMinor: string;
     currency: string;
     status: TransactionStatus;
-    type?: string;
-    gatewayRefId?: string | null;
     idempotencyKey?: string;
-    fxRate: string;
-    sourceCurrency: string;
-    targetCurrency: string;
+    referenceType?: string;
+    referenceId?: string;
+    tags?: string[];
+    context?: Record<string, any>;
     metadata: Record<string, any>;
+    baseCurrency?: string;
+    baseAmountMinor?: string;
+    exchangeRate?: string;
+    reversalOf?: string;
     createdAt: Date;
 }

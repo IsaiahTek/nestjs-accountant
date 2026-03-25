@@ -1,42 +1,62 @@
 import { DataSource } from 'typeorm';
 import { Transaction, TransactionStatus } from '../entity/transaction.entity';
 import { EntryDto } from '../dto/entry.dto';
+import { Account, AccountType } from '../entity/account.entity';
 export declare class LedgerService {
     private dataSource;
     constructor(dataSource: DataSource);
-    findPendingTransactionByRefId(externalRefId: string): Promise<Transaction>;
-    findTransactionByRefId(externalRefId: string): Promise<Transaction>;
-    findPendingTransactionById(transactionId: string): Promise<Transaction>;
+    createAccount(payload: {
+        tenantId: string;
+        accountType: AccountType;
+        referenceType?: string;
+        referenceId?: string;
+        tags?: string[];
+        context?: Record<string, any>;
+        metadata?: Record<string, any>;
+    }): Promise<Account>;
+    findAccountById(accountId: string, tenantId: string): Promise<Account>;
+    findAccountByReference(referenceId: string, referenceType: string, tenantId: string): Promise<Account>;
+    findPendingTransactionByReference(referenceId: string, referenceType: string, tenantId: string): Promise<Transaction>;
+    findTransactionByReference(referenceId: string, referenceType: string, tenantId: string): Promise<Transaction>;
+    findPendingTransactionById(transactionId: string, tenantId: string): Promise<Transaction>;
     private getBalanceKey;
     private parseBalanceKey;
     private applyBalanceDelta;
     private aggregateDeltas;
     createTransaction(payload: {
-        type: string;
+        tenantId: string;
+        referenceType?: string;
+        referenceId?: string;
         entriesData: EntryDto[];
-        ownerAccountId?: string;
-        gatewayRefId?: string;
         idempotencyKey?: string;
         metadata?: Record<string, any>;
-        tenantId?: string;
+        context?: Record<string, any>;
+        tags?: string[];
         status?: TransactionStatus;
+        baseCurrency?: string;
+        baseAmountMinor?: string;
+        exchangeRate?: string;
     }): Promise<Transaction>;
     createPendingTransaction(payload: {
-        tenantId?: string;
-        type: string;
+        tenantId: string;
+        referenceType?: string;
+        referenceId?: string;
         amountMinor: string;
         currency: string;
-        ownerAccountId: string;
         idempotencyKey?: string;
         metadata?: Record<string, any>;
-        gatewayRefId?: string;
+        context?: Record<string, any>;
+        tags?: string[];
     }): Promise<Transaction>;
-    updateTransactionStatus({ tenantId, transactionId, newStatus, gatewayRefId }: {
-        tenantId?: string;
+    updateTransactionStatus(payload: {
+        tenantId: string;
         transactionId: string;
         newStatus: TransactionStatus;
-        gatewayRefId?: string | null;
+        referenceId?: string | null;
     }): Promise<void>;
-    getAccountBalance(accountId: string, currency?: string): Promise<string>;
-    getAccountTransactions(accountId: string): Promise<Transaction[]>;
+    reverseTransaction(transactionId: string, tenantId: string, payload?: {
+        metadata?: Record<string, any>;
+    }): Promise<Transaction>;
+    getAccountBalance(accountId: string, tenantId: string, currency?: string): Promise<string>;
+    getAccountTransactions(accountId: string, tenantId: string): Promise<Transaction[]>;
 }
