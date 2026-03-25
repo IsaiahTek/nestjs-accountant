@@ -34,14 +34,14 @@ export declare class LedgerService {
         tags?: string[];
         status?: TransactionStatus;
         baseCurrency?: string;
-        baseAmountMinor?: string;
-        exchangeRate?: string;
+        baseAmountMinor?: string | bigint;
+        exchangeRate?: string | number;
     }): Promise<Transaction>;
     createPendingTransaction(payload: {
         tenantId: string;
         referenceType?: string;
         referenceId?: string;
-        amountMinor: string;
+        amountMinor: string | bigint;
         currency: string;
         idempotencyKey?: string;
         metadata?: Record<string, any>;

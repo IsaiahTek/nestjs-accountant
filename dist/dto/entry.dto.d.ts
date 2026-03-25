@@ -4,9 +4,9 @@ export declare class EntryDto {
     direction: Direction;
     description: string;
     tenantId?: string;
-    amountMinor: string;
+    amountMinor: string | bigint;
     currency: string;
     baseCurrency?: string;
-    baseAmountMinor?: string;
-    exchangeRate?: string;
+    baseAmountMinor?: string | bigint;
+    exchangeRate?: string | number;
 }

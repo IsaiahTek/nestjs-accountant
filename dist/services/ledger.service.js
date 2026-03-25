@@ -183,8 +183,8 @@ let LedgerService = class LedgerService {
                 amountMinor: totalDebit.toString(),
                 currency,
                 baseCurrency,
-                baseAmountMinor,
-                exchangeRate,
+                baseAmountMinor: baseAmountMinor?.toString(),
+                exchangeRate: exchangeRate?.toString(),
                 status: payload.status ?? transaction_entity_1.TransactionStatus.POSTED,
             });
             await queryRunner.manager.save(transaction);
@@ -194,12 +194,12 @@ let LedgerService = class LedgerService {
                 transactionId: transaction.id,
                 accountId: data.accountId,
                 direction: data.direction,
-                amountMinor: data.amountMinor,
+                amountMinor: data.amountMinor.toString(),
                 currency: data.currency,
                 description: data.description,
                 baseCurrency: data.baseCurrency ?? baseCurrency,
-                baseAmountMinor: data.baseAmountMinor ?? (data.currency === baseCurrency ? data.amountMinor : undefined),
-                exchangeRate: data.exchangeRate ?? exchangeRate,
+                baseAmountMinor: (data.baseAmountMinor ?? (data.currency === baseCurrency ? data.amountMinor : undefined))?.toString(),
+                exchangeRate: (data.exchangeRate ?? exchangeRate)?.toString(),
             }));
             await queryRunner.manager.save(entry_entity_1.Entry, entries);
             await queryRunner.commitTransaction();
@@ -226,7 +226,7 @@ let LedgerService = class LedgerService {
                 referenceType,
                 referenceId,
                 status: transaction_entity_1.TransactionStatus.PENDING,
-                amountMinor,
+                amountMinor: amountMinor.toString(),
                 currency,
                 idempotencyKey,
                 metadata: metadata ?? {},
