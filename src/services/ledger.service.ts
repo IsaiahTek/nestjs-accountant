@@ -175,8 +175,8 @@ export class LedgerService {
         tags?: string[];
         status?: TransactionStatus;
         baseCurrency?: string;
-        baseAmountMinor?: string;
-        exchangeRate?: string;
+        baseAmountMinor?: string | bigint;
+        exchangeRate?: string | number;
     }): Promise<Transaction> {
         const { tenantId, entriesData, idempotencyKey, metadata, context, tags, referenceId, referenceType, baseCurrency, baseAmountMinor, exchangeRate } = payload;
 
@@ -251,8 +251,8 @@ export class LedgerService {
                 amountMinor: totalDebit.toString(),
                 currency,
                 baseCurrency,
-                baseAmountMinor,
-                exchangeRate,
+                baseAmountMinor: baseAmountMinor?.toString(),
+                exchangeRate: exchangeRate?.toString(),
                 status: payload.status ?? TransactionStatus.POSTED,
             });
 
@@ -264,12 +264,12 @@ export class LedgerService {
                 transactionId: transaction.id,
                 accountId: data.accountId,
                 direction: data.direction,
-                amountMinor: data.amountMinor,
+                amountMinor: data.amountMinor.toString(),
                 currency: data.currency,
                 description: data.description,
                 baseCurrency: data.baseCurrency ?? baseCurrency,
-                baseAmountMinor: data.baseAmountMinor ?? (data.currency === baseCurrency ? data.amountMinor : undefined),
-                exchangeRate: data.exchangeRate ?? exchangeRate,
+                baseAmountMinor: (data.baseAmountMinor ?? (data.currency === baseCurrency ? data.amountMinor : undefined))?.toString(),
+                exchangeRate: (data.exchangeRate ?? exchangeRate)?.toString(),
             }));
 
             await queryRunner.manager.save(Entry, entries);
@@ -289,7 +289,7 @@ export class LedgerService {
         tenantId: string;
         referenceType?: string;
         referenceId?: string;
-        amountMinor: string;
+        amountMinor: string | bigint;
         currency: string;
         idempotencyKey?: string;
         metadata?: Record<string, any>;
@@ -309,7 +309,7 @@ export class LedgerService {
                 referenceType,
                 referenceId,
                 status: TransactionStatus.PENDING,
-                amountMinor,
+                amountMinor: amountMinor.toString(),
                 currency,
                 idempotencyKey,
                 metadata: metadata ?? {},

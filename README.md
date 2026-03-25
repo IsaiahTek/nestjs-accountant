@@ -157,6 +157,12 @@ await ledgerService.createTransaction({
 *   **Transaction**: The header record for a balanced set of entries.
 *   **Entry**: Individual Debit/Credit line items.
 
+## Amount Precision
+
+- **Minor Units Only**: All ledger-level amounts must represent minor units (e.g., `"100"` or `100n` for $1.00).
+- **Flexible Input**: The engine accepts both `string` and `bigint` for all amount fields. Strings are recommended for API/JSON boundaries, while `bigint` is convenient for internal backend calculations.
+- **Safe Arithmetic**: The engine uses `BigInt` for all internal balance calculations to prevent floating-point errors.
+
 ## License
 
 ISC
