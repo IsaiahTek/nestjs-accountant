@@ -47,6 +47,23 @@ export class AppModule {}
 
 The `LedgerService` is the primary interface for all financial operations. All methods require a `tenantId`.
 
+#### Account Management
+Avoid direct manipulation of `Account` entities. Use the service methods instead:
+
+```ts
+// 1. Create a Wallet Account for a User
+const account = await ledgerService.createAccount({
+  tenantId: 'my-tenant',
+  accountType: AccountType.ASSET,
+  referenceType: 'USER',
+  referenceId: 'user_123',
+  metadata: { name: 'Savings Wallet' }
+});
+
+// 2. Find an Account by its Domain Reference
+const account = await ledgerService.findAccountByReference('user_123', 'USER', 'my-tenant');
+```
+
 #### Simple Transfer (Double Entry)
 ```ts
 await ledgerService.createTransaction({

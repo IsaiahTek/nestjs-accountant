@@ -5,10 +5,53 @@ import { Transaction, TransactionStatus } from '../entity/transaction.entity';
 import { Entry, Direction } from '../entity/entry.entity';
 import { EntryDto } from '../dto/entry.dto';
 import { Balance } from '../entity/balance.entity';
+import { Account, AccountType } from '../entity/account.entity';
 
 @Injectable()
 export class LedgerService {
     constructor(private dataSource: DataSource) { }
+
+    // -----------------------------
+    // Account Management
+    // -----------------------------
+
+    async createAccount(payload: {
+        tenantId: string;
+        accountType: AccountType;
+        referenceType?: string;
+        referenceId?: string;
+        tags?: string[];
+        context?: Record<string, any>;
+        metadata?: Record<string, any>;
+    }): Promise<Account> {
+        const repo = this.dataSource.getRepository(Account);
+        const account = repo.create(payload);
+        return repo.save(account);
+    }
+
+    async findAccountById(accountId: string, tenantId: string): Promise<Account> {
+        const account = await this.dataSource.getRepository(Account).findOne({
+            where: { id: accountId, tenantId },
+        });
+
+        if (!account) {
+            throw new NotFoundException(`Account ${accountId} not found for tenant ${tenantId}`);
+        }
+
+        return account;
+    }
+
+    async findAccountByReference(referenceId: string, referenceType: string, tenantId: string): Promise<Account> {
+        const account = await this.dataSource.getRepository(Account).findOne({
+            where: { referenceId, referenceType, tenantId },
+        });
+
+        if (!account) {
+            throw new NotFoundException(`Account for ${referenceType}:${referenceId} not found`);
+        }
+
+        return account;
+    }
 
     // -----------------------------
     // Query Helpers
