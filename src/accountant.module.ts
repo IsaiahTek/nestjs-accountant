@@ -1,10 +1,23 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
+import {
+  AccountantModuleOptions,
+  createAccountantOptionsProvider,
+} from './accountant.config';
 import { LedgerService } from './services/ledger.service';
-import { WalletService } from './services/wallet.service';
-import { WebhookService } from './webhook/payment.webhook';
 
 @Module({
-  providers: [LedgerService, WalletService, WebhookService],
-  exports: [LedgerService, WalletService, WebhookService],
+  providers: [
+    createAccountantOptionsProvider(),
+    LedgerService,
+  ],
+  exports: [LedgerService],
 })
-export class AccountantModule {}
+export class AccountantModule {
+  static register(options: AccountantModuleOptions = {}): DynamicModule {
+    return {
+      module: AccountantModule,
+      providers: [createAccountantOptionsProvider(options)],
+      exports: [LedgerService],
+    };
+  }
+}

@@ -8,4 +8,9 @@ export class EntryDto {
   tenantId?: string;
   amountMinor: string;
   currency: string;
+
+  // 🌍 Multi-currency reporting
+  baseCurrency?: string;
+  baseAmountMinor?: string;
+  exchangeRate?: string;
 }

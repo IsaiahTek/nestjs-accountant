@@ -8,28 +8,15 @@ export enum TransactionStatus {
   FAILED = 'FAILED',
 }
 
-// export enum TransactionType {
-//   PAYMENT_CAPTURE = 'PAYMENT_CAPTURE',
-//   ESCROW_LOCK = 'ESCROW_LOCK',
-//   ESCROW_RELEASE = 'ESCROW_RELEASE',
-//   VENDOR_PAYOUT = 'VENDOR_PAYOUT',
-//   REFUND = 'REFUND',
-//   DISPUTE = 'DISPUTE',
-//   FX_CONVERSION = 'FX_CONVERSION',
-//   REVERSAL = 'REVERSAL',
-// }
-
 @Entity('transactions')
 @Index(['tenantId', 'idempotencyKey'], { unique: true })
+@Index(['tenantId', 'referenceType', 'referenceId'])
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'uuid', nullable: true })
   tenantId?: string;
-
-  @Column({ type: 'uuid', nullable: true })
-  ownerId: string | null;
 
   // 🔥 Total amount in minor units (for main currency of txn)
   @Column({ type: 'bigint' })
@@ -42,27 +29,36 @@ export class Transaction {
   status: TransactionStatus;
 
   @Column({ type: 'varchar', nullable: true })
-  type?: string;
-
-  @Column({ nullable: true })
-  gatewayRefId?: string | null;
-
-  // 🔥 Idempotency for webhook retries
-  @Column({ nullable: true })
   idempotencyKey?: string;
 
-  // 🔥 Optional FX support
-  @Column({ nullable: true })
-  fxRate: string;
+  @Column({ type: 'varchar', nullable: true })
+  referenceType?: string;
 
-  @Column({ length: 3, nullable: true })
-  sourceCurrency: string;
+  @Column({ type: 'varchar', nullable: true })
+  referenceId?: string;
 
-  @Column({ length: 3, nullable: true })
-  targetCurrency: string;
+  @Column({ type: 'jsonb', nullable: true })
+  tags?: string[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  context?: Record<string, any>;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
+
+  // 🌍 Multi-currency reporting (Base currency)
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  baseCurrency?: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  baseAmountMinor?: string;
+
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true })
+  exchangeRate?: string;
+
+  // 🔄 Reversal tracking
+  @Column({ type: 'uuid', nullable: true })
+  reversalOf?: string;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

@@ -7,8 +7,8 @@ export enum Direction {
 }
 
 @Entity('entries')
-@Index(['transactionId'])
-@Index(['accountId'])
+@Index(['tenantId', 'transactionId'])
+@Index(['tenantId', 'accountId'])
 export class Entry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -31,6 +31,16 @@ export class Entry {
 
   @Column({ length: 3 })
   currency: string;
+
+  // 🌍 Multi-currency reporting
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  baseCurrency?: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  baseAmountMinor?: string;
+
+  @Column({ type: 'decimal', precision: 18, scale: 8, nullable: true })
+  exchangeRate?: string;
 
   @Column()
   description: string;

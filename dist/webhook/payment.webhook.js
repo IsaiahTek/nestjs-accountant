@@ -9,21 +9,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebhookService = void 0;
 const common_1 = require("@nestjs/common");
+const accountant_config_1 = require("../accountant.config");
 const ledger_service_1 = require("../services/ledger.service");
 const entry_entity_1 = require("../entity/entry.entity");
 const transaction_entity_1 = require("../entity/transaction.entity");
 let WebhookService = class WebhookService {
-    constructor(ledgerService) {
+    constructor(ledgerService, moduleOptions = accountant_config_1.defaultAccountantModuleOptions) {
         this.ledgerService = ledgerService;
-        this.PLATFORM_REVENUE_ACCOUNT_ID = 'uuid-revenue-acc';
-        this.TAX_LIABILITY_ACCOUNT_ID = 'uuid-tax-liability-acc';
-        this.EXTERNAL_CASH_ACCOUNT_ID = 'uuid-external-cash-acc';
-        // Constants must match what was used in the WalletService/Business Logic
-        this.DEPOSIT_FEE_RATE = 0.02; // 2%
-        this.DEPOSIT_VAT_RATE = 0.15; // 15%
+        this.moduleOptions = moduleOptions;
     }
     computeRateMinor(amountMinor, rate) {
         return BigInt(Math.round(Number(amountMinor) * rate));
@@ -40,8 +39,8 @@ let WebhookService = class WebhookService {
             throw new common_1.BadRequestException(`Pending transaction ${pendingTransaction.id} has no owner account.`);
         }
         const grossMinor = BigInt(pendingTransaction.amountMinor);
-        const feeRate = pendingTransaction.metadata?.depositFeeRate ?? this.DEPOSIT_FEE_RATE;
-        const vatRate = pendingTransaction.metadata?.depositVatRate ?? this.DEPOSIT_VAT_RATE;
+        const feeRate = pendingTransaction.metadata?.depositFeeRate ?? this.moduleOptions.depositFeeRate;
+        const vatRate = pendingTransaction.metadata?.depositVatRate ?? this.moduleOptions.depositVatRate;
         const feeMinor = this.computeRateMinor(grossMinor, feeRate);
         const vatMinor = this.computeRateMinor(feeMinor, vatRate);
         const netMinor = grossMinor - feeMinor - vatMinor;
@@ -53,7 +52,7 @@ let WebhookService = class WebhookService {
             // DEBIT: External Cash (Money came into the system's control)
             {
                 tenantId: pendingTransaction.tenantId,
-                accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                accountId: this.moduleOptions.externalCashAccountId,
                 direction: entry_entity_1.Direction.DEBIT,
                 amountMinor: grossMinor.toString(),
                 description: 'Deposit Gross Amount Received (Webhook)',
@@ -71,7 +70,7 @@ let WebhookService = class WebhookService {
             // CREDIT: Platform Revenue (The service fee earned)
             {
                 tenantId: pendingTransaction.tenantId,
-                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                accountId: this.moduleOptions.platformRevenueAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: feeMinor.toString(),
                 description: 'Platform Deposit Fee (Webhook)',
@@ -80,7 +79,7 @@ let WebhookService = class WebhookService {
             // CREDIT: Tax Liability (The tax collected on the fee)
             {
                 tenantId: pendingTransaction.tenantId,
-                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                accountId: this.moduleOptions.taxLiabilityAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: vatMinor.toString(),
                 description: 'VAT on Deposit Fee (Webhook)',
@@ -124,6 +123,8 @@ let WebhookService = class WebhookService {
 exports.WebhookService = WebhookService;
 exports.WebhookService = WebhookService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [ledger_service_1.LedgerService])
+    __param(1, (0, common_1.Optional)()),
+    __param(1, (0, common_1.Inject)(accountant_config_1.ACCOUNTANT_MODULE_OPTIONS)),
+    __metadata("design:paramtypes", [ledger_service_1.LedgerService, Object])
 ], WebhookService);
 //# sourceMappingURL=payment.webhook.js.map

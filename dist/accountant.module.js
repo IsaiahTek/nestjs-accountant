@@ -5,18 +5,32 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var AccountantModule_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AccountantModule = void 0;
 const common_1 = require("@nestjs/common");
+const accountant_config_1 = require("./accountant.config");
 const ledger_service_1 = require("./services/ledger.service");
 const wallet_service_1 = require("./services/wallet.service");
 const payment_webhook_1 = require("./webhook/payment.webhook");
-let AccountantModule = class AccountantModule {
+let AccountantModule = AccountantModule_1 = class AccountantModule {
+    static register(options = {}) {
+        return {
+            module: AccountantModule_1,
+            providers: [(0, accountant_config_1.createAccountantOptionsProvider)(options)],
+            exports: [ledger_service_1.LedgerService, wallet_service_1.WalletService, payment_webhook_1.WebhookService],
+        };
+    }
 };
 exports.AccountantModule = AccountantModule;
-exports.AccountantModule = AccountantModule = __decorate([
+exports.AccountantModule = AccountantModule = AccountantModule_1 = __decorate([
     (0, common_1.Module)({
-        providers: [ledger_service_1.LedgerService, wallet_service_1.WalletService, payment_webhook_1.WebhookService],
+        providers: [
+            (0, accountant_config_1.createAccountantOptionsProvider)(),
+            ledger_service_1.LedgerService,
+            wallet_service_1.WalletService,
+            payment_webhook_1.WebhookService,
+        ],
         exports: [ledger_service_1.LedgerService, wallet_service_1.WalletService, payment_webhook_1.WebhookService],
     })
 ], AccountantModule);

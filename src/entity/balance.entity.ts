@@ -2,7 +2,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 @Entity('balances')
-@Index(['accountId', 'currency'], { unique: true })
+@Index(['tenantId', 'accountId', 'currency'], { unique: true })
 export class Balance {
   @PrimaryGeneratedColumn('uuid')
   id: string;

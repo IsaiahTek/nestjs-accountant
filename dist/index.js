@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AccountType = exports.Account = exports.Balance = exports.Direction = exports.Entry = exports.TransactionStatus = exports.Transaction = exports.WebhookService = exports.WalletService = exports.LedgerService = exports.AccountantModule = void 0;
+exports.AccountType = exports.Account = exports.Balance = exports.Direction = exports.Entry = exports.TransactionStatus = exports.Transaction = exports.WebhookService = exports.WalletService = exports.LedgerService = exports.ACCOUNTANT_MODULE_OPTIONS = exports.AccountantModule = void 0;
 var accountant_module_1 = require("./accountant.module");
 Object.defineProperty(exports, "AccountantModule", { enumerable: true, get: function () { return accountant_module_1.AccountantModule; } });
+var accountant_config_1 = require("./accountant.config");
+Object.defineProperty(exports, "ACCOUNTANT_MODULE_OPTIONS", { enumerable: true, get: function () { return accountant_config_1.ACCOUNTANT_MODULE_OPTIONS; } });
 var ledger_service_1 = require("./services/ledger.service");
 Object.defineProperty(exports, "LedgerService", { enumerable: true, get: function () { return ledger_service_1.LedgerService; } });
 var wallet_service_1 = require("./services/wallet.service");

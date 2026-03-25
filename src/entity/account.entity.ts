@@ -10,7 +10,8 @@ export enum AccountType {
 }
 
 @Entity('accounts')
-@Index(['tenantId', 'ownerId', 'accountType'])
+@Index(['tenantId', 'accountType'])
+@Index(['tenantId', 'referenceType', 'referenceId'])
 export class Account {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -19,12 +20,24 @@ export class Account {
   @Column({ type: 'uuid', nullable: true })
   tenantId?: string;
 
-  // Can represent userId, vendorId, or null for platform accounts
-  @Column({ type: 'uuid', nullable: true })
-  ownerId: string | null;
-
   @Column({ type: 'enum', enum: AccountType })
   accountType: AccountType;
+
+  // ✨ Domain Agnostic Generic Primitives
+  @Column({ type: 'varchar', nullable: true })
+  referenceType?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  referenceId?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  tags?: string[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  context?: Record<string, any>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: Record<string, any>;
 
   @Column({ default: false })
   isFrozen: boolean; // For disputes / compliance freezes

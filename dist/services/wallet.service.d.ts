@@ -1,13 +1,11 @@
+import { ResolvedAccountantModuleOptions } from '../accountant.config';
 import { LedgerService } from '../services/ledger.service';
 import { Transaction } from '../entity/transaction.entity';
 import { PaymentCallback } from '../common/types/gateway.payment.types';
 export declare class WalletService {
     private ledgerService;
-    constructor(ledgerService: LedgerService);
-    private PLATFORM_REVENUE_ACCOUNT_ID;
-    private TAX_LIABILITY_ACCOUNT_ID;
-    private EXTERNAL_CASH_ACCOUNT_ID;
-    private ESCROW_HOLDING_ACCOUNT_ID;
+    private readonly moduleOptions;
+    constructor(ledgerService: LedgerService, moduleOptions?: ResolvedAccountantModuleOptions);
     private toMinor;
     private computeRateMinor;
     sendP2PWithFeeAndVAT(senderAccountId: string, recipientAccountId: string, principalAmount: number, feeRate: number, vatRate: number, currency: string): Promise<Transaction>;

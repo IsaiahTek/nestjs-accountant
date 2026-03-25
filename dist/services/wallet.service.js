@@ -9,22 +9,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WalletService = void 0;
 const common_1 = require("@nestjs/common");
+const accountant_config_1 = require("../accountant.config");
 const ledger_service_1 = require("../services/ledger.service");
 const entry_entity_1 = require("../entity/entry.entity");
 const transaction_entity_1 = require("../entity/transaction.entity");
 let WalletService = class WalletService {
-    constructor(ledgerService) {
+    constructor(ledgerService, moduleOptions = accountant_config_1.defaultAccountantModuleOptions) {
         this.ledgerService = ledgerService;
-        // --------------------------------------
-        // Configurable System Accounts
-        // --------------------------------------
-        this.PLATFORM_REVENUE_ACCOUNT_ID = 'uuid-revenue-acc';
-        this.TAX_LIABILITY_ACCOUNT_ID = 'uuid-tax-liability-acc';
-        this.EXTERNAL_CASH_ACCOUNT_ID = 'uuid-external-cash-acc';
-        this.ESCROW_HOLDING_ACCOUNT_ID = 'uuid-escrow-acc';
+        this.moduleOptions = moduleOptions;
     }
     // --------------------------------------
     // Utility Conversion
@@ -77,14 +75,14 @@ let WalletService = class WalletService {
                 description: 'P2P receipt'
             },
             {
-                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                accountId: this.moduleOptions.platformRevenueAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: feeMinor.toString(),
                 currency: currency,
                 description: 'Revenue'
             },
             {
-                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                accountId: this.moduleOptions.taxLiabilityAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: vatMinor.toString(),
                 currency: currency,
@@ -114,7 +112,7 @@ let WalletService = class WalletService {
                 description: `Escrow lock ${escrowRefId}`
             },
             {
-                accountId: this.ESCROW_HOLDING_ACCOUNT_ID,
+                accountId: this.moduleOptions.escrowHoldingAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: minor.toString(),
                 currency: currency,
@@ -132,7 +130,7 @@ let WalletService = class WalletService {
         const minor = BigInt(Math.round(amount * 100));
         const entries = [
             {
-                accountId: this.ESCROW_HOLDING_ACCOUNT_ID,
+                accountId: this.moduleOptions.escrowHoldingAccountId,
                 direction: entry_entity_1.Direction.DEBIT,
                 amountMinor: minor.toString(),
                 currency: currency,
@@ -198,7 +196,7 @@ let WalletService = class WalletService {
                 entriesData: [
                     {
                         tenantId,
-                        accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                        accountId: this.moduleOptions.externalCashAccountId,
                         direction: entry_entity_1.Direction.DEBIT,
                         amountMinor: grossMinor.toString(),
                         currency,
@@ -214,7 +212,7 @@ let WalletService = class WalletService {
                     },
                     {
                         tenantId,
-                        accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                        accountId: this.moduleOptions.platformRevenueAccountId,
                         direction: entry_entity_1.Direction.CREDIT,
                         amountMinor: feeMinor.toString(),
                         currency,
@@ -222,7 +220,7 @@ let WalletService = class WalletService {
                     },
                     {
                         tenantId,
-                        accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                        accountId: this.moduleOptions.taxLiabilityAccountId,
                         direction: entry_entity_1.Direction.CREDIT,
                         amountMinor: vatMinor.toString(),
                         currency,
@@ -270,7 +268,7 @@ let WalletService = class WalletService {
             // External payout clearing
             {
                 tenantId,
-                accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                accountId: this.moduleOptions.externalCashAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: this.toMinor(netAmount).toString(),
                 currency: currency,
@@ -279,7 +277,7 @@ let WalletService = class WalletService {
             // Revenue
             {
                 tenantId,
-                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                accountId: this.moduleOptions.platformRevenueAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: this.toMinor(serviceFee).toString(),
                 currency: currency,
@@ -288,7 +286,7 @@ let WalletService = class WalletService {
             // VAT
             {
                 tenantId,
-                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                accountId: this.moduleOptions.taxLiabilityAccountId,
                 direction: entry_entity_1.Direction.CREDIT,
                 amountMinor: this.toMinor(vatAmount).toString(),
                 currency: currency,
@@ -356,7 +354,7 @@ let WalletService = class WalletService {
             // Reverse external payout earmark
             {
                 tenantId,
-                accountId: this.EXTERNAL_CASH_ACCOUNT_ID,
+                accountId: this.moduleOptions.externalCashAccountId,
                 direction: entry_entity_1.Direction.DEBIT,
                 amountMinor: this.toMinor(netAmount).toString(),
                 currency: currency,
@@ -365,7 +363,7 @@ let WalletService = class WalletService {
             // Reverse platform revenue
             {
                 tenantId,
-                accountId: this.PLATFORM_REVENUE_ACCOUNT_ID,
+                accountId: this.moduleOptions.platformRevenueAccountId,
                 direction: entry_entity_1.Direction.DEBIT,
                 amountMinor: this.toMinor(serviceFee).toString(),
                 currency: currency,
@@ -374,7 +372,7 @@ let WalletService = class WalletService {
             // Reverse VAT liability
             {
                 tenantId,
-                accountId: this.TAX_LIABILITY_ACCOUNT_ID,
+                accountId: this.moduleOptions.taxLiabilityAccountId,
                 direction: entry_entity_1.Direction.DEBIT,
                 amountMinor: this.toMinor(vatAmount).toString(),
                 currency: currency,
@@ -404,6 +402,8 @@ let WalletService = class WalletService {
 exports.WalletService = WalletService;
 exports.WalletService = WalletService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [ledger_service_1.LedgerService])
+    __param(1, (0, common_1.Optional)()),
+    __param(1, (0, common_1.Inject)(accountant_config_1.ACCOUNTANT_MODULE_OPTIONS)),
+    __metadata("design:paramtypes", [ledger_service_1.LedgerService, Object])
 ], WalletService);
 //# sourceMappingURL=wallet.service.js.map

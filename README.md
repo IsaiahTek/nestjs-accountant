@@ -1,306 +1,145 @@
 # Nestjs Accountant
 
-Double-entry ledger and wallet workflow helpers for NestJS + TypeORM.
+**A fintech-grade, domain-agnostic, and multi-tenant financial ledger engine for NestJS.**
 
-## Features
+`nestjs-accountant` is a production-hardened accounting kernel designed to power anything from SaaS platforms and marketplaces to mobility and logistics systems. It enforces strict double-entry accounting, atomic balance updates, and full tenant isolation without embedding any domain-specific business logic.
 
-- Balanced double-entry posting with atomic balance updates
-- Pending to posted transaction lifecycle
-- Built-in idempotency hooks
-- P2P transfer with fee + VAT
-- Escrow fund and release
-- Deposit and withdrawal orchestration
-- Webhook finalization flow for async deposits
-- Multi-tenant support with optional `tenantId`
+---
+
+## Key Principles
+
+1.  **Domain Agnostic**: No "Users", "Drivers", or "Orders". Only generic primitives (`referenceType`, `referenceId`, `tags`, `context`) to model any vertical.
+2.  **Multi-Tenant SaaS Ready**: Every query, index, and constraint is scoped to a `tenantId`.
+3.  **Strong Financial Integrity**:
+    *   **Double-Entry Enforcement**: Sum of Debits MUST equal Sum of Credits.
+    *   **Atomic Balances**: Row-level **Pessimistic Locking** on balance updates.
+    *   **Deadlock Prevention**: Deterministic sorted locking of accounts in multi-account transactions.
+    *   **Immutability**: Once a transaction is `POSTED` or `REVERSED`, it is final.
+4.  **Performance & Safety**:
+    *   Uses `BigInt` for all calculations (no floating point errors).
+    *   Strict idempotency keys per tenant.
+    *   Support for ISO 4217 currencies and base-currency reporting.
 
 ## Installation
 
-This package uses peer dependencies for NestJS/TypeORM.
-
 ```bash
 npm install nestjs-accountant
-npm install @nestjs/common @nestjs/core typeorm reflect-metadata rxjs
 ```
 
-## Exported API
+## Quick Start
+
+### 1. Register Module
+
+The module no longer requires hardcoded system accounts. You provide these dynamically per transaction.
 
 ```ts
-import {
-  AccountantModule,
-  LedgerService,
-  WalletService,
-  WebhookService,
-  Account,
-  Balance,
-  Entry,
-  Transaction,
-  AccountType,
-  Direction,
-  TransactionStatus,
-} from 'nestjs-accountant';
-```
-
-## Quick Start (NestJS)
-
-```ts
-import 'reflect-metadata';
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import {
-  AccountantModule,
-  Account,
-  Balance,
-  Entry,
-  Transaction,
-} from 'nestjs-accountant';
+import { AccountantModule } from 'nestjs-accountant';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT ?? 5432),
-      username: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-      entities: [Account, Balance, Entry, Transaction],
-      synchronize: false,
-    }),
-    AccountantModule,
+    AccountantModule.register(),
   ],
 })
 export class AppModule {}
 ```
 
-## Database Setup
+### 2. Core Service: LedgerService
 
-1. Add these entities to your TypeORM configuration:
-1. `Account`
-1. `Balance`
-1. `Entry`
-1. `Transaction`
-1. Generate and run migrations in your app.
-1. Keep `synchronize: false` in production.
+The `LedgerService` is the primary interface for all financial operations. All methods require a `tenantId`.
 
-## Core Concepts
-
-### Amount Precision
-
-- `LedgerService` expects `amountMinor` as string integers (`"1000"` for 10.00).
-- `WalletService` accepts decimal `number` amounts and internally converts to minor units.
-
-### Double-Entry Enforcement
-
-- Every transaction must have total debits equal total credits.
-- Unbalanced entries are rejected before commit.
-
-### Atomic Balance Safety
-
-- Posting is done inside DB transactions.
-- Balance rows are locked pessimistically during updates.
-- Negative balances are rejected.
-
-### Idempotency
-
-- `idempotencyKey` is supported on pending and posted transaction creation.
-- If an existing row matches the key, the existing transaction is returned.
-
-## LedgerService Usage
-
-### Post a custom transaction
-
+#### Simple Transfer (Double Entry)
 ```ts
-import { Direction } from 'nestjs-accountant';
-
-const tx = await ledgerService.createTransaction({
-  type: 'MANUAL_ADJUSTMENT',
-  ownerAccountId: userAccountId,
-  tenantId,
-  idempotencyKey: `adj:${requestId}`,
-  metadata: { reason: 'admin-correction' },
+await ledgerService.createTransaction({
+  tenantId: 'my-tenant-uuid',
+  referenceType: 'TRANSFER',
+  referenceId: 'transfer_01',
   entriesData: [
-    {
-      tenantId,
-      accountId: userAccountId,
-      direction: Direction.CREDIT,
-      amountMinor: '5000',
-      currency: 'USD',
-      description: 'Credit user wallet',
-    },
-    {
-      tenantId,
-      accountId: platformFundingAccountId,
-      direction: Direction.DEBIT,
-      amountMinor: '5000',
-      currency: 'USD',
-      description: 'Funding source',
-    },
+    { accountId: 'sender_acc', direction: Direction.DEBIT, amountMinor: '1000', currency: 'USD', description: 'Payment' },
+    { accountId: 'receiver_acc', direction: Direction.CREDIT, amountMinor: '1000', currency: 'USD', description: 'Payout' },
   ],
 });
 ```
 
-### Create a pending transaction
-
+#### Multi-Split Payment (Platform Fee + Tax)
 ```ts
-const pending = await ledgerService.createPendingTransaction({
-  tenantId,
-  type: 'DEPOSIT',
-  amountMinor: '250000',
-  currency: 'USD',
-  ownerAccountId: userAccountId,
-  idempotencyKey: `deposit-intent:${requestId}`,
-  metadata: { channel: 'card' },
+await ledgerService.createTransaction({
+  tenantId: 'tenant_abc',
+  referenceType: 'ORDER',
+  referenceId: 'order_123',
+  entriesData: [
+    { accountId: 'customer', direction: Direction.DEBIT, amountMinor: '1000', currency: 'USD', description: 'Total charge' },
+    { accountId: 'merchant', direction: Direction.CREDIT, amountMinor: '800', currency: 'USD', description: 'Net' },
+    { accountId: 'platform_revenue', direction: Direction.CREDIT, amountMinor: '150', currency: 'USD', description: 'Fee' },
+    { accountId: 'tax_liability', direction: Direction.CREDIT, amountMinor: '50', currency: 'USD', description: 'VAT' },
+  ],
 });
 ```
 
-### Update transaction status
+#### Handling Escrow
+Escrow is handled by moving funds to a tenant-designated holding account.
 
 ```ts
+// 1. Lock funds
+await ledgerService.createTransaction({
+  tenantId, referenceType: 'ESCROW', referenceId: 'escrow_1',
+  entriesData: [
+    { accountId: 'buyer', direction: Direction.DEBIT, amountMinor: '500', currency: 'USD', description: 'Lock funds' },
+    { accountId: 'escrow_holding', direction: Direction.CREDIT, amountMinor: '500', currency: 'USD', description: 'Hold' },
+  ]
+});
+
+// 2. Release funds
+await ledgerService.createTransaction({
+  tenantId, referenceType: 'ESCROW_RELEASE', referenceId: 'escrow_1',
+  entriesData: [
+    { accountId: 'escrow_holding', direction: Direction.DEBIT, amountMinor: '500', currency: 'USD', description: 'Release' },
+    { accountId: 'seller', direction: Direction.CREDIT, amountMinor: '500', currency: 'USD', description: 'Payout' },
+  ]
+});
+```
+
+#### Transaction life cycle (Pending -> Posted)
+Useful for authorization/capture flows or gateway webhooks.
+
+```ts
+// Create a pending record
+const tx = await ledgerService.createPendingTransaction({
+  tenantId, amountMinor: '100', currency: 'USD', referenceId: 'gate_123'
+});
+
+// Later, finalize it
 await ledgerService.updateTransactionStatus({
-  tenantId,
-  transactionId: pending.id,
-  newStatus: TransactionStatus.POSTED,
-  gatewayRefId: 'gw_123',
+  tenantId, transactionId: tx.id, newStatus: TransactionStatus.POSTED
 });
 ```
 
-### Balance and history
+## Advanced Concepts
+
+### Deadlock Prevention
+When multiple concurrent transactions involve the same accounts, deadlocks can occur if locks are acquired in different orders. `nestjs-accountant` automatically **sorts account IDs** before acquiring locks, ensuring a deterministic locking order across the entire system.
+
+### Idempotency
+Pass an `idempotencyKey` in `createTransaction`. The engine will ensure that subsequent requests with the same key for the same `tenantId` return the existing transaction record rather than processing it twice.
+
+### Multi-Currency Reporting
+You can track a "Base Currency" (e.g., USD) alongside the transaction currency to facilitate global financial reporting.
 
 ```ts
-const balanceMinor = await ledgerService.getAccountBalance(userAccountId, 'USD');
-const txs = await ledgerService.getAccountTransactions(userAccountId);
-```
-
-## WalletService Usage
-
-### Payment callback signature
-
-```ts
-type PaymentCallback = (payload: {
-  amount: number;
-  transactionId: string;
-  paymentMethodId?: string;
-}) => Promise<string>; // must return gatewayRefId
-```
-
-### P2P with fee and VAT
-
-```ts
-await walletService.sendP2PWithFeeAndVAT(
-  senderAccountId,
-  recipientAccountId,
-  100,    // principal amount
-  0.01,   // fee rate 1%
-  0.075,  // VAT on fee 7.5%
-  'USD',
-);
-```
-
-### Fund and release escrow
-
-```ts
-await walletService.fundEscrow(buyerAccountId, 150, escrowRefId, 'USD');
-await walletService.releaseEscrow(sellerAccountId, 150, escrowRefId, 'USD');
-```
-
-### Handle deposit (synchronous callback flow)
-
-```ts
-const tx = await walletService.handleDeposit({
-  userAccountId,
-  grossAmount: 200,
-  paymentToken: 'tok_abc',
-  depositFeeRate: 0.02,
-  depositVatRate: 0.15,
-  currency: 'USD',
-  tenantId,
-  idempotencyKey: `deposit:${requestId}`,
-  metadata: { source: 'checkout' },
-  paymentCallback: async ({ amount, transactionId, paymentMethodId }) => {
-    const gatewayRefId = await gateway.charge({
-      amount,
-      localRef: transactionId,
-      token: paymentMethodId,
-    });
-    return gatewayRefId;
-  },
+await ledgerService.createTransaction({
+  // ... core data
+  baseCurrency: 'USD',
+  baseAmountMinor: '4500', 
+  exchangeRate: '0.9',
 });
 ```
 
-### Handle withdrawal
+## Entity Schema
 
-```ts
-await walletService.handleWithdrawal({
-  userAccountId,
-  netAmount: 100,
-  bankAccountId: 'bank_123',
-  withdrawalFeeAmount: 2,
-  withdrawalVatAmount: 0.3,
-  currency: 'USD',
-  tenantId,
-  idempotencyKey: `withdrawal:${requestId}`,
-  paymentCallback: async ({ amount, transactionId, paymentMethodId }) => {
-    const gatewayRefId = await gateway.payout({
-      amount,
-      localRef: transactionId,
-      bankAccountId: paymentMethodId,
-    });
-    return gatewayRefId;
-  },
-});
-```
+*   **Account**: The basic unit of the ledger. Generic with `referenceId` and `context`.
+*   **Balance**: Optimized row-level balance views per `(tenant, account, currency)`.
+*   **Transaction**: The header record for a balanced set of entries.
+*   **Entry**: Individual Debit/Credit line items.
 
-### Wallet read helpers
+## License
 
-```ts
-const walletBalance = await walletService.getWalletBalance(userAccountId); // major unit number
-const walletTransactions = await walletService.getWalletTransactions(userAccountId);
-```
-
-## WebhookService Usage (Async Deposit Finalization)
-
-Use this when deposit charge confirmation arrives later via webhook.
-
-```ts
-await webhookService.finalizeDeposit(externalGatewayRefId, {
-  transactionId: pendingTransactionId, // optional but recommended
-  rawPayload: webhookPayload,
-});
-```
-
-What it does:
-
-1. Resolves pending transaction by `transactionId` or `externalRefId`
-1. Recomputes fee + VAT using pending metadata (or defaults)
-1. Posts final double-entry deposit transaction
-1. Marks pending transaction `POSTED` or `FAILED`
-
-## Transaction Status Lifecycle
-
-- `PENDING`: Intent created, not finalized
-- `POSTED`: Finalized and applied
-- `FAILED`: Finalization failed
-- `REVERSED`: Reserved for reversal flows
-
-## Important Notes
-
-1. System account IDs are currently hardcoded inside `WalletService` and `WebhookService`.
-1. `PLATFORM_REVENUE_ACCOUNT_ID`
-1. `TAX_LIABILITY_ACCOUNT_ID`
-1. `EXTERNAL_CASH_ACCOUNT_ID`
-1. `ESCROW_HOLDING_ACCOUNT_ID` (wallet service only)
-1. Replace these with real account IDs in your deployment.
-1. Use idempotency keys for all external-facing write operations.
-1. Keep all entries in a transaction in the same currency.
-
-## Error Handling Expectations
-
-- Insufficient funds throws `BadRequestException`
-- Missing transaction/reference throws `NotFoundException`
-- Gateway and posting failures surface as `BadRequestException` or `InternalServerErrorException` depending on flow
-
-## Build
-
-```bash
-npm run build
-```
+ISC
