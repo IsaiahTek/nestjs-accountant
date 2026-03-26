@@ -15,7 +15,10 @@
     *   **Atomic Balances**: Row-level **Pessimistic Locking** on balance updates.
     *   **Deadlock Prevention**: Deterministic sorted locking of accounts in multi-account transactions.
     *   **Immutability**: Once a transaction is `POSTED` or `REVERSED`, it is final.
-4.  **Performance & Safety**:
+4.  **Flexible Multi-Tenancy**:
+    *   **SaaS Ready**: Built-in isolation per `tenantId`.
+    *   **Single-Tenant Friendly**: For non-SaaS apps, simply use a constant like `'default'` or even `null` as the tenant ID.
+5.  **Performance & Safety**:
     *   Uses `BigInt` for all calculations (no floating point errors).
     *   Strict idempotency keys per tenant.
     *   Support for ISO 4217 currencies and base-currency reporting.
