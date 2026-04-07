@@ -406,7 +406,6 @@ export class LedgerService {
         // Since ownerId is removed, we should find transactions by looking at entries for this account
         const entries = await this.dataSource.getRepository(Entry).find({
             where: { tenantId, accountId },
-            relations: ['transaction'],
         });
 
         // This is a bit inefficient, but more correct since a transaction can involve many accounts.
