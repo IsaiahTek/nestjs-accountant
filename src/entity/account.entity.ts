@@ -2,11 +2,11 @@
 import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 export enum AccountType {
-  ASSET,
-  LIABILITY,
-  EQUITY,
-  REVENUE,
-  EXPENSE
+  ASSET = 'ASSET',
+  LIABILITY = 'LIABILITY',
+  EQUITY = 'EQUITY',
+  REVENUE = 'REVENUE',
+  EXPENSE = 'EXPENSE'
 }
 
 @Entity('accounts')
@@ -22,6 +22,9 @@ export class Account {
 
   @Column({ type: 'enum', enum: AccountType })
   accountType: AccountType;
+
+  @Column({ default: false })
+  allowNegative: boolean;
 
   // ✨ Domain Agnostic Generic Primitives
   @Column({ type: 'varchar', nullable: true })

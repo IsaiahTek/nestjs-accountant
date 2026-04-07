@@ -14,11 +14,11 @@ exports.Account = exports.AccountType = void 0;
 const typeorm_1 = require("typeorm");
 var AccountType;
 (function (AccountType) {
-    AccountType[AccountType["ASSET"] = 0] = "ASSET";
-    AccountType[AccountType["LIABILITY"] = 1] = "LIABILITY";
-    AccountType[AccountType["EQUITY"] = 2] = "EQUITY";
-    AccountType[AccountType["REVENUE"] = 3] = "REVENUE";
-    AccountType[AccountType["EXPENSE"] = 4] = "EXPENSE";
+    AccountType["ASSET"] = "ASSET";
+    AccountType["LIABILITY"] = "LIABILITY";
+    AccountType["EQUITY"] = "EQUITY";
+    AccountType["REVENUE"] = "REVENUE";
+    AccountType["EXPENSE"] = "EXPENSE";
 })(AccountType || (exports.AccountType = AccountType = {}));
 let Account = class Account {
 };
@@ -33,8 +33,12 @@ __decorate([
 ], Account.prototype, "tenantId", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'enum', enum: AccountType }),
-    __metadata("design:type", Number)
+    __metadata("design:type", String)
 ], Account.prototype, "accountType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Account.prototype, "allowNegative", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", String)

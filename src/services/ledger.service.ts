@@ -106,27 +106,51 @@ export class LedgerService {
         return { accountId, currency };
     }
 
+    private isDebitNormal(type: AccountType): boolean {
+        return type === AccountType.ASSET || type === AccountType.EXPENSE;
+    }
+
+    private isCreditNormal(type: AccountType): boolean {
+        return type === AccountType.LIABILITY || type === AccountType.EQUITY || type === AccountType.REVENUE;
+    }
+
     private async applyBalanceDelta(
         queryRunner: QueryRunner,
         accountId: string,
         currency: string,
-        deltaMinor: bigint,
+        debits: bigint,
+        credits: bigint,
         tenantId: string,
     ): Promise<void> {
-        const repo = queryRunner.manager.getRepository(Balance);
+        const balanceRepo = queryRunner.manager.getRepository(Balance);
+        const accountRepo = queryRunner.manager.getRepository(Account);
 
-        // 🔥 Pessimistic locking is already applied in createTransaction via sorted keys
-        let balance = await repo.findOne({
+        // 1. Fetch Account (domain primitives) to know AccountType and constraints
+        const account = await accountRepo.findOne({ where: { id: accountId, tenantId } });
+        if (!account) {
+            throw new NotFoundException(`Account ${accountId} not found`);
+        }
+
+        // 2. Determine net delta based on Normal Balance direction (ALERE)
+        let delta: bigint;
+        if (this.isDebitNormal(account.accountType)) {
+            delta = debits - credits; // Asset/Expense: Debit increases (+)
+        } else {
+            delta = credits - debits; // Liability/Equity/Revenue: Credit increases (+)
+        }
+
+        // 3. Fetch/Create Balance with pessimistic locking
+        let balance = await balanceRepo.findOne({
             where: { tenantId, accountId, currency },
             lock: { mode: 'pessimistic_write' },
         });
 
         if (!balance) {
-            if (deltaMinor < 0n) {
+            if (delta < 0n && !account.allowNegative) {
                 throw new BadRequestException(`Insufficient funds in account ${accountId}`);
             }
 
-            balance = repo.create({
+            balance = balanceRepo.create({
                 tenantId,
                 accountId,
                 currency,
@@ -134,27 +158,31 @@ export class LedgerService {
             });
         }
 
-        const nextAmount = BigInt(balance.amountMinor) + deltaMinor;
-        if (nextAmount < 0n) {
+        const nextAmount = BigInt(balance.amountMinor) + delta;
+        
+        // 4. Enforce allowNegative constraint
+        if (nextAmount < 0n && !account.allowNegative) {
             throw new BadRequestException(`Insufficient funds in account ${accountId}`);
         }
 
         balance.amountMinor = nextAmount.toString();
-        await repo.save(balance);
+        await balanceRepo.save(balance);
     }
 
-    private aggregateDeltas(entries: EntryDto[]): Map<string, bigint> {
-        const map = new Map<string, bigint>();
+    private aggregateDeltas(entries: EntryDto[]): Map<string, { debits: bigint; credits: bigint }> {
+        const map = new Map<string, { debits: bigint; credits: bigint }>();
 
         for (const entry of entries) {
             const key = this.getBalanceKey(entry.accountId, entry.currency);
-            const current = map.get(key) ?? 0n;
-            const delta =
-                entry.direction === Direction.DEBIT
-                    ? -BigInt(entry.amountMinor)
-                    : BigInt(entry.amountMinor);
+            const current = map.get(key) ?? { debits: 0n, credits: 0n };
 
-            map.set(key, current + delta);
+            if (entry.direction === Direction.DEBIT) {
+                current.debits += BigInt(entry.amountMinor);
+            } else {
+                current.credits += BigInt(entry.amountMinor);
+            }
+
+            map.set(key, current);
         }
 
         return map;
@@ -228,13 +256,14 @@ export class LedgerService {
 
             // 5. Atomic Balance Updates with Pessimistic Locking
             for (const key of sortedKeys) {
-                const delta = deltasMap.get(key)!;
+                const { debits, credits } = deltasMap.get(key)!;
                 const { accountId, currency: entryCurrency } = this.parseBalanceKey(key);
                 await this.applyBalanceDelta(
                     queryRunner,
                     accountId,
                     entryCurrency,
-                    delta,
+                    debits,
+                    credits,
                     tenantId,
                 );
             }

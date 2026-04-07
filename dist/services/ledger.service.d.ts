@@ -21,6 +21,8 @@ export declare class LedgerService {
     findPendingTransactionById(transactionId: string, tenantId: string): Promise<Transaction>;
     private getBalanceKey;
     private parseBalanceKey;
+    private isDebitNormal;
+    private isCreditNormal;
     private applyBalanceDelta;
     private aggregateDeltas;
     createTransaction(payload: {

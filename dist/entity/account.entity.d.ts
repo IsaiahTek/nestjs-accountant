@@ -1,14 +1,15 @@
 export declare enum AccountType {
-    ASSET = 0,
-    LIABILITY = 1,
-    EQUITY = 2,
-    REVENUE = 3,
-    EXPENSE = 4
+    ASSET = "ASSET",
+    LIABILITY = "LIABILITY",
+    EQUITY = "EQUITY",
+    REVENUE = "REVENUE",
+    EXPENSE = "EXPENSE"
 }
 export declare class Account {
     id: string;
     tenantId?: string;
     accountType: AccountType;
+    allowNegative: boolean;
     referenceType?: string;
     referenceId?: string;
     tags?: string[];
