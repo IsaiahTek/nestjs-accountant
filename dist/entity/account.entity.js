@@ -70,6 +70,7 @@ __decorate([
 exports.Account = Account = __decorate([
     (0, typeorm_1.Entity)('accounts'),
     (0, typeorm_1.Index)(['tenantId', 'accountType']),
-    (0, typeorm_1.Index)(['tenantId', 'referenceType', 'referenceId'])
+    (0, typeorm_1.Index)(['tenantId', 'referenceType', 'referenceId']),
+    (0, typeorm_1.Unique)(['tenantId', 'accountType', 'referenceType', 'referenceId'])
 ], Account);
 //# sourceMappingURL=account.entity.js.map

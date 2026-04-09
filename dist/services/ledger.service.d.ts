@@ -13,6 +13,7 @@ export declare class LedgerService {
         tags?: string[];
         context?: Record<string, any>;
         metadata?: Record<string, any>;
+        allowNegative?: boolean;
     }): Promise<Account>;
     findAccountById(accountId: string, tenantId: string): Promise<Account>;
     findAccountByReference(referenceId: string, referenceType: string, tenantId: string): Promise<Account>;

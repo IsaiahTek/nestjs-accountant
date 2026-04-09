@@ -1,5 +1,5 @@
 // src/ledger/entities/account.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index, Unique } from 'typeorm';
 
 export enum AccountType {
   ASSET = 'ASSET',
@@ -12,6 +12,7 @@ export enum AccountType {
 @Entity('accounts')
 @Index(['tenantId', 'accountType'])
 @Index(['tenantId', 'referenceType', 'referenceId'])
+@Unique(['tenantId', 'accountType', 'referenceType', 'referenceId'])
 export class Account {
   @PrimaryGeneratedColumn('uuid')
   id: string;

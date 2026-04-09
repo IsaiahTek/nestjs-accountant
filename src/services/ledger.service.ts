@@ -23,6 +23,7 @@ export class LedgerService {
         tags?: string[];
         context?: Record<string, any>;
         metadata?: Record<string, any>;
+        allowNegative?: boolean;
     }): Promise<Account> {
         const repo = this.dataSource.getRepository(Account);
         const account = repo.create(payload);
@@ -159,7 +160,7 @@ export class LedgerService {
         }
 
         const nextAmount = BigInt(balance.amountMinor) + delta;
-        
+
         // 4. Enforce allowNegative constraint
         if (nextAmount < 0n && !account.allowNegative) {
             throw new BadRequestException(`Insufficient funds in account ${accountId}`);
