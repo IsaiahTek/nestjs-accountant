@@ -6,34 +6,53 @@
 
 ---
 
-## Key Principles
+## 🚀 Key Features
 
-1.  **Domain Agnostic**: No "Users", "Drivers", or "Orders". Only generic primitives (`referenceType`, `referenceId`, `tags`, `context`) to model any vertical.
-2.  **Multi-Tenant SaaS Ready**: Every query, index, and constraint is scoped to a `tenantId`.
-3.  **Strong Financial Integrity**:
-    *   **Double-Entry Enforcement**: Sum of Debits MUST equal Sum of Credits.
-    *   **Atomic Balances**: Row-level **Pessimistic Locking** on balance updates.
-    *   **Deadlock Prevention**: Deterministic sorted locking of accounts in multi-account transactions.
-    *   **Immutability**: Once a transaction is `POSTED` or `REVERSED`, it is final.
-4.  **Flexible Multi-Tenancy**:
-    *   **SaaS Ready**: Built-in isolation per `tenantId`.
-    *   **Single-Tenant Friendly**: For non-SaaS apps, simply use a constant like `'default'` or even `null` as the tenant ID.
-5.  **Performance & Safety**:
-    *   Uses `BigInt` for all calculations (no floating point errors).
-    *   Strict idempotency keys per tenant.
-    *   Support for ISO 4217 currencies and base-currency reporting.
+-   **Domain Agnostic**: No "Users", "Drivers", or "Orders". Only generic primitives (`referenceType`, `referenceId`, `tags`, `context`) to model any vertical.
+-   **Multi-Tenant SaaS Ready**: Every query, index, and constraint is scoped to a `tenantId` for strict isolation.
+-   **Strong Financial Integrity**:
+    -   **Double-Entry Enforcement**: Sum of Debits MUST equal Sum of Credits for every transaction.
+    -   **Atomic Balances**: Row-level **Pessimistic Locking** ensure thread-safe balance updates.
+    -   **Deadlock Prevention**: Deterministic sorted locking of accounts in multi-account transactions.
+    -   **Immutability**: Once a transaction is `POSTED` or `REVERSED`, it is final and cannot be modified.
+-   **Multi-Currency & Reporting**: Store transactions in any currency while tracking a "Base Currency" and exchange rates for global reporting.
+-   **Performance & Precision**: Uses `BigInt` (via string mapping) for all calculations to eliminate floating-point errors.
+-   **Idempotency**: Built-in support for `idempotencyKey` per tenant.
 
-## Installation
+---
+
+## 📦 Installation
 
 ```bash
 npm install nestjs-accountant
 ```
 
-## Quick Start
+Note: This library requires `TypeORM` and a PostgreSQL database (recommended for `jsonb` support).
 
-### 1. Register Module
+---
 
-The module no longer requires hardcoded system accounts. You provide these dynamically per transaction.
+## ⚙️ Setup
+
+### 1. Register Entities
+
+The library provides several entities that must be registered in your TypeORM configuration.
+
+```ts
+import { Account, Balance, Transaction, Entry } from 'nestjs-accountant';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      // ... your config
+      entities: [Account, Balance, Transaction, Entry],
+      synchronize: true, // or use migrations
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### 2. Register Module
 
 ```ts
 import { AccountantModule } from 'nestjs-accountant';
@@ -46,126 +65,160 @@ import { AccountantModule } from 'nestjs-accountant';
 export class AppModule {}
 ```
 
-### 2. Core Service: LedgerService
+---
 
-The `LedgerService` is the primary interface for all financial operations. All methods require a `tenantId`.
+## 📖 Core Concepts
 
-#### Account Management
-Avoid direct manipulation of `Account` entities. Use the service methods instead:
+### Double-Entry Accounting
+Every financial event is recorded as a **Transaction** containing at least two **Entries**.
+-   **Debit**: Increases ASSET/EXPENSE, decreases LIABILITY/EQUITY/REVENUE.
+-   **Credit**: Increases LIABILITY/EQUITY/REVENUE, decreases ASSET/EXPENSE.
+-   **Rule**: `Sum(Debits) === Sum(Credits)`
+
+### ALERE Principle (Account Types)
+`nestjs-accountant` uses five core account types:
+1.  **ASSET**: (Debit Normal) Things you own (e.g., Bank balance, Cash).
+2.  **LIABILITY**: (Credit Normal) Things you owe (e.g., User wallets, Tax payable).
+3.  **EQUITY**: (Credit Normal) Ownership interest.
+4.  **REVENUE**: (Credit Normal) Income earned (e.g., Platform fees).
+5.  **EXPENSE**: (Debit Normal) Costs incurred.
+
+---
+
+## 🛠️ Usage Guide
+
+### 1. Account Management
+
+Accounts are the endpoints of your ledger. Use `referenceType` and `referenceId` to link them to your domain models (e.g., Users, Merchants).
 
 ```ts
-// 1. Create a Wallet Account for a User
-const account = await ledgerService.createAccount({
+import { LedgerService, AccountType } from 'nestjs-accountant';
+
+// Create a User Wallet (Liability for the platform)
+const wallet = await ledgerService.createAccount({
   tenantId: 'my-tenant',
-  accountType: AccountType.ASSET,
+  accountType: AccountType.LIABILITY,
   referenceType: 'USER',
   referenceId: 'user_123',
-  metadata: { name: 'Savings Wallet' }
+  metadata: { name: 'Main Wallet' },
+  allowNegative: false, // Enforce no overdraft
 });
 
-// 2. Find an Account by its Domain Reference
+// Find an account by reference
 const account = await ledgerService.findAccountByReference('user_123', 'USER', 'my-tenant');
 ```
 
-#### Simple Transfer (Double Entry)
+### 2. Creating Transactions
+
+#### Simple Transfer (P2P)
 ```ts
+import { Direction } from 'nestjs-accountant';
+
 await ledgerService.createTransaction({
-  tenantId: 'my-tenant-uuid',
-  referenceType: 'TRANSFER',
-  referenceId: 'transfer_01',
+  tenantId: 'my-tenant',
+  idempotencyKey: 'transfer_unique_id_1',
+  referenceType: 'P2P_TRANSFER',
+  referenceId: 'transfer_001',
   entriesData: [
-    { accountId: 'sender_acc', direction: Direction.DEBIT, amountMinor: '1000', currency: 'USD', description: 'Payment' },
-    { accountId: 'receiver_acc', direction: Direction.CREDIT, amountMinor: '1000', currency: 'USD', description: 'Payout' },
+    { 
+      accountId: senderId, 
+      direction: Direction.DEBIT, 
+      amountMinor: '1000', 
+      currency: 'USD', 
+      description: 'Transfer to User B' 
+    },
+    { 
+      accountId: receiverId, 
+      direction: Direction.CREDIT, 
+      amountMinor: '1000', 
+      currency: 'USD', 
+      description: 'Transfer from User A' 
+    },
   ],
 });
 ```
 
-#### Multi-Split Payment (Platform Fee + Tax)
+#### Multi-Split Payment (Marketplace)
+A single transaction can involve many accounts, such as splitting an order between a merchant, the platform, and tax authorities.
+
 ```ts
 await ledgerService.createTransaction({
-  tenantId: 'tenant_abc',
-  referenceType: 'ORDER',
-  referenceId: 'order_123',
+  tenantId: 'my-tenant',
   entriesData: [
-    { accountId: 'customer', direction: Direction.DEBIT, amountMinor: '1000', currency: 'USD', description: 'Total charge' },
-    { accountId: 'merchant', direction: Direction.CREDIT, amountMinor: '800', currency: 'USD', description: 'Net' },
-    { accountId: 'platform_revenue', direction: Direction.CREDIT, amountMinor: '150', currency: 'USD', description: 'Fee' },
-    { accountId: 'tax_liability', direction: Direction.CREDIT, amountMinor: '50', currency: 'USD', description: 'VAT' },
+    { accountId: customer, direction: Direction.DEBIT, amountMinor: '1000', currency: 'USD', description: 'Total charge' },
+    { accountId: merchant, direction: Direction.CREDIT, amountMinor: '800', currency: 'USD', description: 'Net payout' },
+    { accountId: platform_fee, direction: Direction.CREDIT, amountMinor: '150', currency: 'USD', description: 'Fee' },
+    { accountId: tax_payable, direction: Direction.CREDIT, amountMinor: '50', currency: 'USD', description: 'VAT' },
   ],
 });
 ```
 
-#### Handling Escrow
-Escrow is handled by moving funds to a tenant-designated holding account.
+### 3. Pending Transactions (Auth & Capture)
+
+Useful for payment gateway flows where funds are authorized but not yet settled.
 
 ```ts
-// 1. Lock funds
-await ledgerService.createTransaction({
-  tenantId, referenceType: 'ESCROW', referenceId: 'escrow_1',
-  entriesData: [
-    { accountId: 'buyer', direction: Direction.DEBIT, amountMinor: '500', currency: 'USD', description: 'Lock funds' },
-    { accountId: 'escrow_holding', direction: Direction.CREDIT, amountMinor: '500', currency: 'USD', description: 'Hold' },
-  ]
-});
-
-// 2. Release funds
-await ledgerService.createTransaction({
-  tenantId, referenceType: 'ESCROW_RELEASE', referenceId: 'escrow_1',
-  entriesData: [
-    { accountId: 'escrow_holding', direction: Direction.DEBIT, amountMinor: '500', currency: 'USD', description: 'Release' },
-    { accountId: 'seller', direction: Direction.CREDIT, amountMinor: '500', currency: 'USD', description: 'Payout' },
-  ]
-});
-```
-
-#### Transaction life cycle (Pending -> Posted)
-Useful for authorization/capture flows or gateway webhooks.
-
-```ts
-// Create a pending record
+// 1. Create a pending record (No balance updates yet)
 const tx = await ledgerService.createPendingTransaction({
-  tenantId, amountMinor: '100', currency: 'USD', referenceId: 'gate_123'
+  tenantId, 
+  amountMinor: '5000', 
+  currency: 'USD', 
+  referenceId: 'auth_789'
 });
 
-// Later, finalize it
+// 2. Later, finalize and update status
 await ledgerService.updateTransactionStatus({
-  tenantId, transactionId: tx.id, newStatus: TransactionStatus.POSTED
+  tenantId, 
+  transactionId: tx.id, 
+  newStatus: TransactionStatus.POSTED
 });
 ```
 
-## Advanced Concepts
+### 4. Reversals
 
-### Deadlock Prevention
-When multiple concurrent transactions involve the same accounts, deadlocks can occur if locks are acquired in different orders. `nestjs-accountant` automatically **sorts account IDs** before acquiring locks, ensuring a deterministic locking order across the entire system.
+Reversing a transaction creates a mirror-image transaction (swapping debits and credits) and links it to the original.
 
-### Idempotency
-Pass an `idempotencyKey` in `createTransaction`. The engine will ensure that subsequent requests with the same key for the same `tenantId` return the existing transaction record rather than processing it twice.
+```ts
+// This creates a new POSTED transaction that undoes the original
+const reversal = await ledgerService.reverseTransaction(originalTxId, 'my-tenant');
+```
+
+---
+
+## 🌍 Advanced Features
 
 ### Multi-Currency Reporting
-You can track a "Base Currency" (e.g., USD) alongside the transaction currency to facilitate global financial reporting.
+Track a "Base Currency" (e.g., your auditing currency) alongside the transaction currency.
 
 ```ts
 await ledgerService.createTransaction({
-  // ... core data
+  // ... core entries
   baseCurrency: 'USD',
   baseAmountMinor: '4500', 
-  exchangeRate: '0.9',
+  exchangeRate: '0.9', // local_amount / base_amount
 });
 ```
 
-## Entity Schema
+### Deadlock Prevention
+When processing transactions involving multiple accounts simultaneously, the engine automatically **sorts account IDs** before acquiring locks. This ensures a deterministic locking order and prevents circular wait deadlocks.
 
-*   **Account**: The basic unit of the ledger. Generic with `referenceId` and `context`.
-*   **Balance**: Optimized row-level balance views per `(tenant, account, currency)`.
-*   **Transaction**: The header record for a balanced set of entries.
-*   **Entry**: Individual Debit/Credit line items.
+### Minor Units & Precision
+-   **BigInt Safety**: All amounts are handled as `BigInt` internally and stored as `string` in the database to prevent precision loss.
+-   **Minor Units**: Always use minor units (e.g., `"100"` for $1.00).
 
-## Amount Precision
+---
 
-- **Minor Units Only**: All ledger-level amounts must represent minor units (e.g., `"100"` or `100n` for $1.00).
-- **Flexible Input**: The engine accepts both `string` and `bigint` for all amount fields. Strings are recommended for API/JSON boundaries, while `bigint` is convenient for internal backend calculations.
-- **Safe Arithmetic**: The engine uses `BigInt` for all internal balance calculations to prevent floating-point errors.
+## 📊 Entity Schema
 
-## License
+| Entity | Purpose | Key Fields |
+| :--- | :--- | :--- |
+| **Account** | The ledger account | `accountType`, `referenceType`, `referenceId`, `allowNegative`, `isFrozen` |
+| **Balance** | Cached balance view | `amountMinor`, `currency`, `accountId` |
+| **Transaction** | Header for entries | `status`, `amountMinor`, `currency`, `idempotencyKey`, `reversalOf` |
+| **Entry** | Individual line items | `direction`, `amountMinor`, `accountId`, `exchangeRate` |
+
+---
+
+## ⚖️ License
 
 ISC
